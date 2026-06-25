@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Elyadai Serviços
 
-## Getting Started
+Sistema web modular para gestão de escoltas armadas, com autenticação por perfil, operação de agendamentos, rastreamento em tempo real, upload de fotos, financeiro e relatórios.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Next.js 16 com App Router
+- TypeScript
+- Tailwind CSS 4
+- Supabase Auth, Postgres, Row Level Security, Realtime e Storage
+- Lucide React para iconografia
+
+## Estrutura principal
+
+- `src/app/login/page.tsx`
+- `src/app/dashboard/page.tsx`
+- `src/app/clientes/page.tsx`
+- `src/app/clientes/[id]/page.tsx`
+- `src/app/funcionarios/page.tsx`
+- `src/app/funcionarios/[id]/page.tsx`
+- `src/app/agendamentos/page.tsx`
+- `src/app/agendamentos/novo/page.tsx`
+- `src/app/agendamentos/[id]/page.tsx`
+- `src/app/financeiro/page.tsx`
+- `src/app/relatorios/page.tsx`
+- `src/app/cliente/dashboard/page.tsx`
+- `src/app/funcionario/dashboard/page.tsx`
+
+## Camadas
+
+- `src/lib/supabase.ts`: client Supabase para browser e Realtime.
+- `src/lib/supabase-server.ts`: clients server/admin do Supabase.
+- `src/lib/auth.ts`: leitura e proteção de perfil autenticado.
+- `src/lib/permissions.ts`: mapa de permissões e redirecionamento por papel.
+- `middleware.ts`: renovação de sessão e proteção de rotas.
+- `src/services`: queries e Server Actions reais.
+- `src/components`: navegação, cards, forms, tables e mapa realtime.
+- `src/types`: tipos de domínio.
+- `src/validators`: validações de formulários.
+
+## Banco de dados
+
+Execute [supabase/schema.sql](supabase/schema.sql) no SQL Editor do Supabase. O arquivo cria:
+
+- `profiles`
+- `clients`
+- `employees`
+- `escorts`
+- `escort_team`
+- `escort_locations`
+- `escort_photos`
+- `escort_status_history`
+- `financial_clients`
+- `financial_employees`
+- `extra_expenses`
+- `notifications`
+
+Também configura RLS em todas as tabelas, policies por papel, triggers de timestamps, histórico de status, cálculo automático de excedente, validação de equipe com exatamente 2 funcionários, bloqueio de conflito de horário, bucket `escort-photos` e Realtime para `escort_locations`.
+
+## Configuração local
+
+Copie `.env.example` para `.env.local` e preencha:
+
+```powershell
+NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-chave-anonima
+SUPABASE_SERVICE_ROLE_KEY=sua-chave-service-role-apenas-no-servidor
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Rode a aplicação:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```powershell
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Abra [http://localhost:3000](http://localhost:3000).
 
-## Learn More
+## Primeiro supervisor
 
-To learn more about Next.js, take a look at the following resources:
+Crie o usuário supervisor pelo painel do Supabase Auth. Depois insira o perfil correspondente no SQL Editor:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```sql
+insert into public.profiles (user_id, nome, email, role)
+values ('UUID_DO_AUTH_USER', 'Supervisor Elyadai', 'supervisor@elyadai.com', 'supervisor');
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Com esse acesso, cadastre clientes e funcionários pela aplicação. Cada cadastro cria automaticamente um usuário Supabase Auth, senha inicial e `profile` com role `cliente` ou `funcionario`.
 
-## Deploy on Vercel
+## Validação
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```powershell
+npm run lint
+npm run build
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Observações de produção
+
+- Rotas de WhatsApp ainda devem ser conectadas a um provedor real, como Meta Cloud API, Twilio ou Z-API.
+- O mapa usa uma visualização própria com Realtime; para produção com mapa geográfico completo, conecte Mapbox, Google Maps ou Leaflet.
+- A `SUPABASE_SERVICE_ROLE_KEY` nunca deve ir para o browser. Ela é usada apenas em Server Actions para criar contas automaticamente.
