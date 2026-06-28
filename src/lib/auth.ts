@@ -1,9 +1,14 @@
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { getHomeForRole } from "@/lib/permissions";
+import { temporarySupervisorMode, temporarySupervisorProfile } from "@/lib/temporary-supervisor-mode";
 import type { Profile, UserRole } from "@/types/database";
 
 export async function getCurrentProfile() {
+  if (temporarySupervisorMode) {
+    return temporarySupervisorProfile;
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data: userData } = await supabase.auth.getUser();
 

@@ -1,4 +1,4 @@
-import { CreditCard, MapPin, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CreditCard, MapPin, ShieldCheck } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { StatCard } from "@/components/cards/stat-card";
 import { RecordTable } from "@/components/tables/record-table";
@@ -15,7 +15,17 @@ export default async function ClientDashboardPage() {
   const profile = await requireProfile(["cliente"]);
 
   if (!profile.client_id) {
-    throw new Error("Perfil de cliente sem vínculo com cadastro de cliente.");
+    return (
+      <AppShell profile={profile}>
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-950 shadow-sm">
+          <AlertTriangle className="text-amber-700" />
+          <h1 className="mt-3 font-display text-2xl font-bold">Cadastro de cliente não vinculado</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6">
+            Seu perfil de acesso existe, mas ainda não está associado a um cadastro de cliente. Peça ao supervisor para vincular este usuário ao cliente correspondente.
+          </p>
+        </section>
+      </AppShell>
+    );
   }
 
   const escorts = await getClientDashboard(profile.client_id);

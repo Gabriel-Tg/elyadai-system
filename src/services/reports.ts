@@ -1,7 +1,19 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { shouldUseTemporarySupabaseFallback } from "@/lib/temporary-supervisor-mode";
 import type { Escort, ExtraExpense, FinancialClient, FinancialEmployee } from "@/types/database";
 
 export async function getReports(searchParams?: { inicio?: string; fim?: string; status?: string }) {
+  if (shouldUseTemporarySupabaseFallback()) {
+    return {
+      escorts: [],
+      faturamento: 0,
+      pendencias: 0,
+      gastosExtras: 0,
+      employeePayments: [],
+      expenses: [],
+    };
+  }
+
   const supabase = await createServerSupabaseClient();
   let escortsQuery = supabase.from("escorts").select("*, clients(id,nome), financial_clients(*), extra_expenses(*)").order("data_escolta", { ascending: false });
 

@@ -1,7 +1,21 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { shouldUseTemporarySupabaseFallback } from "@/lib/temporary-supervisor-mode";
 import type { Employee, Escort, FinancialClient } from "@/types/database";
 
 export async function getSupervisorDashboard() {
+  if (shouldUseTemporarySupabaseFallback()) {
+    return {
+      employees: [],
+      escorts: [],
+      pendingPayments: [],
+      availableEmployees: 0,
+      busyEmployees: 0,
+      todayMissions: 0,
+      inProgressMissions: 0,
+      finishedMissions: 0,
+    };
+  }
+
   const supabase = await createServerSupabaseClient();
   const today = new Date().toISOString().slice(0, 10);
   const [{ data: employees }, { data: escorts }, { data: pendingPayments }] = await Promise.all([
@@ -26,6 +40,10 @@ export async function getSupervisorDashboard() {
 }
 
 export async function getClientDashboard(clientId: string) {
+  if (shouldUseTemporarySupabaseFallback()) {
+    return [];
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("escorts")
@@ -41,6 +59,10 @@ export async function getClientDashboard(clientId: string) {
 }
 
 export async function getEmployeeDashboard(employeeId: string) {
+  if (shouldUseTemporarySupabaseFallback()) {
+    return [];
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("escorts")

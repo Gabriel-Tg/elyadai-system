@@ -3,10 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminSupabaseClient, createServerSupabaseClient } from "@/lib/supabase-server";
+import { shouldUseTemporarySupabaseFallback } from "@/lib/temporary-supervisor-mode";
 import { initialPassword, optional, required } from "@/validators/records";
 import type { Client, Escort, FinancialClient } from "@/types/database";
 
 export async function listClients() {
+  if (shouldUseTemporarySupabaseFallback()) {
+    return [];
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.from("clients").select("*").order("nome");
 
@@ -18,6 +23,10 @@ export async function listClients() {
 }
 
 export async function getClientDetails(id: string) {
+  if (shouldUseTemporarySupabaseFallback()) {
+    throw new Error("Cliente indisponível no modo supervisor temporário sem Supabase configurado.");
+  }
+
   const supabase = await createServerSupabaseClient();
   const [{ data: client, error: clientError }, { data: escorts, error: escortsError }, { data: payments, error: paymentsError }] = await Promise.all([
     supabase.from("clients").select("*").eq("id", id).single(),
@@ -37,6 +46,10 @@ export async function getClientDetails(id: string) {
 }
 
 export async function createClientAction(formData: FormData) {
+  if (shouldUseTemporarySupabaseFallback()) {
+    throw new Error("Cadastros ficam indisponíveis no modo supervisor temporário sem Supabase configurado.");
+  }
+
   const nome = required(formData.get("nome"), "Nome");
   const cnpj = required(formData.get("cnpj"), "CNPJ");
   const telefone = required(formData.get("telefone"), "Telefone");

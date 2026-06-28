@@ -3,10 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminSupabaseClient, createServerSupabaseClient } from "@/lib/supabase-server";
+import { shouldUseTemporarySupabaseFallback } from "@/lib/temporary-supervisor-mode";
 import { optional, required } from "@/validators/records";
 import type { Escort, EscortLocation, EscortPhoto, EscortStatus, Profile } from "@/types/database";
 
 export async function listEscorts() {
+  if (shouldUseTemporarySupabaseFallback()) {
+    return [];
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("escorts")
@@ -21,6 +26,10 @@ export async function listEscorts() {
 }
 
 export async function getEscortDetails(id: string) {
+  if (shouldUseTemporarySupabaseFallback()) {
+    throw new Error("Escolta indisponível no modo supervisor temporário sem Supabase configurado.");
+  }
+
   const supabase = await createServerSupabaseClient();
   const [{ data: escort, error: escortError }, { data: locations, error: locationsError }, { data: photos, error: photosError }] = await Promise.all([
     supabase
@@ -44,6 +53,10 @@ export async function getEscortDetails(id: string) {
 }
 
 export async function createEscortAction(formData: FormData) {
+  if (shouldUseTemporarySupabaseFallback()) {
+    throw new Error("Agendamentos ficam indisponíveis no modo supervisor temporário sem Supabase configurado.");
+  }
+
   const supabase = await createServerSupabaseClient();
   const clientId = required(formData.get("client_id"), "Cliente");
   const employeeOneId = required(formData.get("employee_1"), "Funcionário 1");
@@ -75,6 +88,10 @@ export async function createEscortAction(formData: FormData) {
 }
 
 export async function updateEscortStatusAction(escortId: string, status: EscortStatus) {
+  if (shouldUseTemporarySupabaseFallback()) {
+    throw new Error("Atualizações ficam indisponíveis no modo supervisor temporário sem Supabase configurado.");
+  }
+
   const supabase = await createServerSupabaseClient();
   const patch = status === "Em andamento" ? { status, inicio_real: new Date().toISOString() } : status === "Finalizada" ? { status, fim_real: new Date().toISOString() } : { status };
   const { error } = await supabase.from("escorts").update(patch).eq("id", escortId);
@@ -87,6 +104,10 @@ export async function updateEscortStatusAction(escortId: string, status: EscortS
 }
 
 export async function sendLocationAction(profile: Profile, formData: FormData) {
+  if (shouldUseTemporarySupabaseFallback()) {
+    throw new Error("Localização fica indisponível no modo supervisor temporário sem Supabase configurado.");
+  }
+
   if (!profile.employee_id) {
     throw new Error("Perfil de funcionário obrigatório para enviar localização.");
   }
@@ -109,6 +130,10 @@ export async function sendLocationAction(profile: Profile, formData: FormData) {
 }
 
 export async function uploadEscortPhotoAction(profile: Profile, formData: FormData) {
+  if (shouldUseTemporarySupabaseFallback()) {
+    throw new Error("Fotos ficam indisponíveis no modo supervisor temporário sem Supabase configurado.");
+  }
+
   if (!profile.employee_id) {
     throw new Error("Perfil de funcionário obrigatório para anexar fotos.");
   }

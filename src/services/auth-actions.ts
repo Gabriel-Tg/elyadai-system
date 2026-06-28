@@ -3,10 +3,15 @@
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { getHomeForRole } from "@/lib/permissions";
+import { temporarySupervisorMode } from "@/lib/temporary-supervisor-mode";
 import { required } from "@/validators/records";
 import type { Profile } from "@/types/database";
 
 export async function signInAction(formData: FormData) {
+  if (temporarySupervisorMode) {
+    redirect("/dashboard");
+  }
+
   const email = required(formData.get("email"), "Email");
   const password = required(formData.get("password"), "Senha");
   const supabase = await createServerSupabaseClient();
@@ -32,6 +37,10 @@ export async function signInAction(formData: FormData) {
 }
 
 export async function signOutAction() {
+  if (temporarySupervisorMode) {
+    redirect("/dashboard");
+  }
+
   const supabase = await createServerSupabaseClient();
   await supabase.auth.signOut();
   redirect("/login");

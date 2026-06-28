@@ -1,4 +1,4 @@
-import { Camera, MapPin, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Camera, MapPin, ShieldCheck } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { StatCard } from "@/components/cards/stat-card";
 import { requireProfile } from "@/lib/auth";
@@ -11,7 +11,17 @@ export default async function EmployeeDashboardPage() {
   const profile = await requireProfile(["funcionario"]);
 
   if (!profile.employee_id) {
-    throw new Error("Perfil de funcionário sem vínculo com cadastro de funcionário.");
+    return (
+      <AppShell profile={profile}>
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-950 shadow-sm">
+          <AlertTriangle className="text-amber-700" />
+          <h1 className="mt-3 font-display text-2xl font-bold">Cadastro de funcionário não vinculado</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6">
+            Seu perfil de acesso existe, mas ainda não está associado a um cadastro de funcionário. Peça ao supervisor para vincular este usuário ao funcionário correspondente.
+          </p>
+        </section>
+      </AppShell>
+    );
   }
 
   const missions = await getEmployeeDashboard(profile.employee_id);

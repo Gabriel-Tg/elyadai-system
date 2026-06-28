@@ -1,6 +1,12 @@
+import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/forms/login-form";
+import { temporarySupervisorMode } from "@/lib/temporary-supervisor-mode";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  if (temporarySupervisorMode) {
+    redirect("/dashboard");
+  }
+
   const params = await searchParams;
 
   return (

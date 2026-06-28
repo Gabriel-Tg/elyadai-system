@@ -1,8 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { temporarySupervisorMode } from "@/lib/temporary-supervisor-mode";
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+
+  if (temporarySupervisorMode) {
+    return response;
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
