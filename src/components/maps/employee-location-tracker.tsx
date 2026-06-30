@@ -64,7 +64,7 @@ export function EmployeeLocationTracker({ escortId }: { escortId: string }) {
   const helper = {
     denied: "Permita o acesso à localização no navegador do celular.",
     error: lastError ?? "Não foi possível obter a localização do celular.",
-    idle: "Toque em iniciar durante a missão para transmitir o GPS do celular.",
+    idle: "Ative o GPS para transmitir a localização em tempo real durante a missão.",
     tracking: lastSentAt ? `Último envio às ${lastSentAt}.` : "Aguardando primeira leitura do GPS.",
     unsupported: "Este navegador não oferece suporte a GPS.",
   }[status];
@@ -83,7 +83,7 @@ export function EmployeeLocationTracker({ escortId }: { escortId: string }) {
       <div className="mt-4 grid grid-cols-2 gap-2">
         <button className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 py-3 text-sm font-bold text-white disabled:opacity-60" disabled={status === "tracking" || isPending} onClick={startTracking} type="button">
           <MapPin size={18} />
-          Iniciar GPS
+          Ativar GPS
         </button>
         <button className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 py-3 text-sm font-bold text-emerald-900" onClick={stopTracking} type="button">
           <Square size={18} />

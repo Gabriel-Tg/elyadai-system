@@ -27,8 +27,8 @@ function friendlyDatabaseError(error: { message: string } | null | undefined, fa
     return "Um dos funcionários selecionados já está vinculado a outra escolta no mesmo horário.";
   }
 
-  if (error.message.includes("Cada escolta deve possuir exatamente 2 funcionários") || error.message.includes("exatamente 2 funcionários distintos")) {
-    return "A escolta deve possuir exatamente 2 funcionários distintos.";
+  if (error.message.includes("Cada escolta deve possuir exatamente 1 funcionário") || error.message.includes("funcionário responsável")) {
+    return "A escolta deve possuir exatamente 1 funcionário responsável.";
   }
 
   if (error.message.includes("Informe o local alternativo")) {
@@ -54,17 +54,18 @@ function scheduledEnd(dataEscolta: string, horaCarregamento: string) {
   return new Date(start.getTime() + 24 * 60 * 60 * 1000).toISOString();
 }
 
-async function ensureEmployeeAssigned(escortId: string, employeeId: string) {
+async function ensurePrimaryEmployeeAssigned(escortId: string, employeeId: string) {
   const admin = createAdminSupabaseClient();
   const { data, error } = await admin
     .from("escort_team")
     .select("id")
     .eq("escort_id", escortId)
     .eq("employee_id", employeeId)
+    .eq("position", 1)
     .maybeSingle();
 
   if (error || !data) {
-    throw new Error("Funcionário não vinculado a esta escolta.");
+    throw new Error("Apenas o funcionário 1 pode executar esta ação.");
   }
 }
 
@@ -140,16 +141,11 @@ export async function createEscortAction(formData: FormData) {
   const supabase = await createServerSupabaseClient();
   const clientId = required(formData.get("client_id"), "Cliente");
   const employeeOneId = required(formData.get("employee_1"), "Funcionário 1");
-  const employeeTwoId = required(formData.get("employee_2"), "Funcionário 2");
   const dataEscolta = required(formData.get("data_escolta"), "Data da escolta");
   const horaCarregamento = required(formData.get("hora_carregamento"), "Hora do carregamento");
   const encontroAlternativoPermitido = formData.get("encontro_alternativo_permitido") === "on";
   const localAlternativoEncontro = optional(formData.get("local_alternativo_encontro"));
   const valorBase = Number(required(formData.get("valor_base"), "Valor base"));
-
-  if (employeeOneId === employeeTwoId) {
-    throw new Error("A escolta deve possuir exatamente 2 funcionários distintos.");
-  }
 
   if (encontroAlternativoPermitido && !localAlternativoEncontro) {
     throw new Error("Informe o local alternativo de encontro.");
@@ -166,7 +162,7 @@ export async function createEscortAction(formData: FormData) {
     p_encontro_alternativo_permitido: encontroAlternativoPermitido,
     p_local_alternativo_encontro: localAlternativoEncontro,
     p_employee_1: employeeOneId,
-    p_employee_2: employeeTwoId,
+    p_employee_2: null,
     p_valor_base: valorBase,
   });
 
@@ -243,7 +239,7 @@ export async function updateEscortStatusAction(escortId: string, status: EscortS
 
   const { data: currentEscort, error: currentEscortError } = await supabase
     .from("escorts")
-    .select("id, status, inicio_real, fim_real, escort_team(employee_id)")
+    .select("id, status, inicio_real, fim_real, escort_team(employee_id, position)")
     .eq("id", escortId)
     .maybeSingle();
 
@@ -254,6 +250,13 @@ export async function updateEscortStatusAction(escortId: string, status: EscortS
 
   if (!currentEscort) {
     throw new Error("Missão não encontrada.");
+  }
+
+  if (currentEscort.status === status) {
+    revalidatePath(`/agendamentos/${escortId}`);
+    revalidatePath("/funcionario/dashboard");
+    revalidatePath("/dashboard");
+    return;
   }
 
   ensureStatusTransition(currentEscort.status as EscortStatus, status);
@@ -267,19 +270,16 @@ export async function updateEscortStatusAction(escortId: string, status: EscortS
       throw new Error("Funcionários só podem iniciar ou finalizar a missão.");
     }
 
-    await ensureEmployeeAssigned(escortId, profile.employee_id);
+    await ensurePrimaryEmployeeAssigned(escortId, profile.employee_id);
   }
 
   if (profile.role === "cliente") {
     if (!profile.client_id) {
-      throw new Error("Perfil de cliente obrigatório para iniciar a escolta.");
-    }
-
-    if (status !== "Em andamento") {
-      throw new Error("Clientes só podem iniciar a corrida.");
+      throw new Error("Perfil de cliente obrigatório para acessar a escolta.");
     }
 
     await ensureClientOwnsEscort(escortId, profile.client_id);
+    throw new Error("Clientes não podem alterar o status da corrida.");
   }
 
   const patch = status === "Em andamento" ? { status, inicio_real: new Date().toISOString() } : status === "Finalizada" ? { status, fim_real: new Date().toISOString() } : { status };
@@ -328,7 +328,7 @@ export async function sendLocationAction(profile: Profile, formData: FormData) {
 
   const supabase = createAdminSupabaseClient();
   const escortId = required(formData.get("escort_id"), "Escolta");
-  await ensureEmployeeAssigned(escortId, currentProfile.employee_id);
+  await ensurePrimaryEmployeeAssigned(escortId, currentProfile.employee_id);
   const { error } = await supabase.from("escort_locations").insert({
     escort_id: escortId,
     employee_id: currentProfile.employee_id,
@@ -357,7 +357,7 @@ export async function sendCurrentEmployeeLocationAction(formData: FormData) {
 
   const supabase = createAdminSupabaseClient();
   const escortId = required(formData.get("escort_id"), "Escolta");
-  await ensureEmployeeAssigned(escortId, profile.employee_id);
+  await ensurePrimaryEmployeeAssigned(escortId, profile.employee_id);
   const { error } = await supabase.from("escort_locations").insert({
     escort_id: escortId,
     employee_id: profile.employee_id,

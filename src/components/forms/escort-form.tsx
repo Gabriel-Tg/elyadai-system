@@ -46,13 +46,6 @@ export function EscortForm({ clients, employees }: { clients: Client[]; employee
           {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.nome} - {employee.status}</option>)}
         </select>
       </label>
-      <label className="block">
-        <span className="text-sm font-bold text-stone-700">Funcionário 2</span>
-        <select className="mt-2 w-full rounded-md border border-stone-300 px-3 py-3" name="employee_2" required>
-          <option value="">Selecione</option>
-          {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.nome} - {employee.status}</option>)}
-        </select>
-      </label>
       <div className="md:col-span-2">
         <button className="rounded-md bg-stone-950 px-4 py-3 font-bold text-white hover:bg-stone-800" type="submit">
           Criar agendamento

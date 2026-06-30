@@ -20,8 +20,8 @@ function positionFor(location: EscortLocation, locations: EscortLocation[]) {
   };
 }
 
-export function RealtimeMap({ escortId, initialLocations }: { escortId: string; initialLocations: EscortLocation[] }) {
-  const [locations, setLocations] = useState(initialLocations);
+export function RealtimeMap({ escortId, initialLocations, trackedEmployeeId }: { escortId: string; initialLocations: EscortLocation[]; trackedEmployeeId?: string | null }) {
+  const [locations, setLocations] = useState(() => initialLocations.filter((location) => !trackedEmployeeId || location.employee_id === trackedEmployeeId));
   const latest = locations.at(-1);
 
   useEffect(() => {
@@ -31,14 +31,22 @@ export function RealtimeMap({ escortId, initialLocations }: { escortId: string; 
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "escort_locations", filter: `escort_id=eq.${escortId}` },
-        (payload) => setLocations((current) => [...current, payload.new as EscortLocation]),
+        (payload) => {
+          const location = payload.new as EscortLocation;
+
+          if (trackedEmployeeId && location.employee_id !== trackedEmployeeId) {
+            return;
+          }
+
+          setLocations((current) => [...current, location]);
+        },
       )
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [escortId]);
+  }, [escortId, trackedEmployeeId]);
 
   return (
     <div className="relative min-h-[320px] overflow-hidden rounded-lg border border-stone-200 bg-[#dfe9dd] shadow-sm">

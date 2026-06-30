@@ -230,7 +230,7 @@ declare
 begin
   target_escort_id := coalesce(new.escort_id, old.escort_id);
   select count(*) into team_count from public.escort_team where escort_id = target_escort_id;
-  if team_count <> 2 then raise exception 'Cada escolta deve possuir exatamente 2 funcionários'; end if;
+  if team_count <> 1 then raise exception 'Cada escolta deve possuir exatamente 1 funcionário'; end if;
   return null;
 end;
 $$;
@@ -300,11 +300,25 @@ begin
   end if;
 
   if requester_role = 'cliente' and new.status <> 'Em andamento' then
-    raise exception 'Clientes só podem iniciar a corrida';
+    raise exception 'Clientes não podem alterar o status da corrida';
+  end if;
+
+  if requester_role = 'cliente' and old.status is distinct from new.status then
+    raise exception 'Clientes não podem alterar o status da corrida';
   end if;
 
   if requester_role = 'funcionario' and new.status not in ('Em andamento', 'Finalizada') then
     raise exception 'Funcionários só podem iniciar ou finalizar a missão';
+  end if;
+
+  if requester_role = 'funcionario' and old.status is distinct from new.status and not exists (
+    select 1
+    from public.escort_team team
+    where team.escort_id = new.id
+      and team.employee_id = public.current_employee_id()
+      and team.position = 1
+  ) then
+    raise exception 'Apenas o funcionário 1 pode iniciar ou finalizar a missão';
   end if;
 
   if requester_role not in ('cliente', 'funcionario') then
@@ -336,8 +350,8 @@ begin
 
   if new.status = 'Em andamento' then
     select count(*) into team_count from public.escort_team where escort_id = new.id;
-    if team_count <> 2 then
-      raise exception 'Cada escolta deve possuir exatamente 2 funcionários';
+    if team_count <> 1 then
+      raise exception 'Cada escolta deve possuir exatamente 1 funcionário';
     end if;
 
     perform 1
@@ -451,25 +465,25 @@ declare
   v_end timestamptz;
 begin
   if not public.is_supervisor() then raise exception 'Somente supervisores podem criar escoltas'; end if;
-  if p_employee_1 = p_employee_2 then raise exception 'A equipe deve possuir exatamente 2 funcionários distintos'; end if;
+  if p_employee_1 is null then raise exception 'Informe o funcionário responsável pela escolta'; end if;
   if p_encontro_alternativo_permitido and nullif(trim(coalesce(p_local_alternativo_encontro, '')), '') is null then raise exception 'Informe o local alternativo de encontro'; end if;
   v_start := (p_data_escolta + p_hora_carregamento)::timestamptz;
   v_end := v_start + interval '24 hours';
   if exists (
     select 1 from public.escort_team team
     join public.escorts escort on escort.id = team.escort_id
-    where team.employee_id in (p_employee_1, p_employee_2)
+    where team.employee_id = p_employee_1
       and escort.status <> 'Cancelada'
       and v_start < escort.scheduled_end
       and v_end > (escort.data_escolta + escort.hora_carregamento)::timestamptz
   ) then raise exception 'Funcionário já está em outra escolta no mesmo horário'; end if;
   insert into public.escorts (client_id, data_escolta, hora_carregamento, local_carregamento, observacao_operacional, encontro_alternativo_permitido, local_alternativo_encontro, scheduled_end, created_by)
   values (p_client_id, p_data_escolta, p_hora_carregamento, p_local_carregamento, p_observacao_operacional, p_encontro_alternativo_permitido, p_local_alternativo_encontro, v_end, public.current_profile_id()) returning id into v_escort_id;
-  insert into public.escort_team (escort_id, employee_id, position) values (v_escort_id, p_employee_1, 1), (v_escort_id, p_employee_2, 2);
+  insert into public.escort_team (escort_id, employee_id, position) values (v_escort_id, p_employee_1, 1);
   insert into public.financial_clients (escort_id, valor_base) values (v_escort_id, p_valor_base);
-  insert into public.financial_employees (escort_id, employee_id) values (v_escort_id, p_employee_1), (v_escort_id, p_employee_2);
+  insert into public.financial_employees (escort_id, employee_id) values (v_escort_id, p_employee_1);
   insert into public.notifications (escort_id, user_id, canal, target_role, mensagem)
-  select v_escort_id, profiles.user_id, 'Interna', profiles.role, 'Nova escolta agendada' from public.profiles where profiles.client_id = p_client_id or profiles.employee_id in (p_employee_1, p_employee_2);
+  select v_escort_id, profiles.user_id, 'Interna', profiles.role, 'Nova escolta agendada' from public.profiles where profiles.client_id = p_client_id or profiles.employee_id = p_employee_1;
   return v_escort_id;
 end;
 $$;
@@ -497,18 +511,12 @@ begin
   if requester_role = 'supervisor' then
     null;
   elsif requester_role = 'cliente' then
-    if requester_client_id is null or target_escort.client_id <> requester_client_id then
-      raise exception 'Cliente não vinculado a esta escolta';
-    end if;
-
-    if p_status <> 'Em andamento' then
-      raise exception 'Clientes só podem iniciar a corrida';
-    end if;
+    raise exception 'Clientes não podem alterar o status da corrida';
   elsif requester_role = 'funcionario' then
     if requester_employee_id is null or not exists (
-      select 1 from public.escort_team team where team.escort_id = p_escort_id and team.employee_id = requester_employee_id
+      select 1 from public.escort_team team where team.escort_id = p_escort_id and team.employee_id = requester_employee_id and team.position = 1
     ) then
-      raise exception 'Funcionário não vinculado a esta escolta';
+      raise exception 'Apenas o funcionário 1 pode iniciar ou finalizar a missão';
     end if;
 
     if p_status not in ('Em andamento', 'Finalizada') then
