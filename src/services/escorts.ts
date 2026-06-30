@@ -3,10 +3,46 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireProfile } from "@/lib/auth";
-import { createAdminSupabaseClient } from "@/lib/supabase-server";
+import { createAdminSupabaseClient, createServerSupabaseClient } from "@/lib/supabase-server";
 import { shouldUseTemporarySupabaseFallback } from "@/lib/temporary-supervisor-mode";
 import { optional, required } from "@/validators/records";
 import type { Escort, EscortLocation, EscortPhoto, EscortStatus, Profile } from "@/types/database";
+
+const ACTIVE_ESCORT_STATUS: EscortStatus = "Em andamento";
+
+const ALLOWED_STATUS_TRANSITIONS: Record<EscortStatus, EscortStatus[]> = {
+  Agendada: ["Em andamento", "Cancelada", "Reagendada"],
+  "Em andamento": ["Finalizada"],
+  Finalizada: [],
+  Cancelada: [],
+  Reagendada: [],
+};
+
+function friendlyDatabaseError(error: { message: string } | null | undefined, fallback: string) {
+  if (!error?.message) {
+    return fallback;
+  }
+
+  if (error.message.includes("Funcionário já está em outra escolta")) {
+    return "Um dos funcionários selecionados já está vinculado a outra escolta no mesmo horário.";
+  }
+
+  if (error.message.includes("Cada escolta deve possuir exatamente 2 funcionários") || error.message.includes("exatamente 2 funcionários distintos")) {
+    return "A escolta deve possuir exatamente 2 funcionários distintos.";
+  }
+
+  if (error.message.includes("Informe o local alternativo")) {
+    return "Informe o local alternativo de encontro.";
+  }
+
+  return error.message;
+}
+
+function ensureStatusTransition(currentStatus: EscortStatus, nextStatus: EscortStatus) {
+  if (!ALLOWED_STATUS_TRANSITIONS[currentStatus].includes(nextStatus)) {
+    throw new Error(`Transição de status inválida: ${currentStatus} -> ${nextStatus}.`);
+  }
+}
 
 function scheduledEnd(dataEscolta: string, horaCarregamento: string) {
   const start = new Date(`${dataEscolta}T${horaCarregamento}`);
@@ -100,8 +136,8 @@ export async function createEscortAction(formData: FormData) {
     throw new Error("Agendamentos ficam indisponíveis no modo supervisor temporário sem Supabase configurado.");
   }
 
-  const profile = await requireProfile(["supervisor"]);
-  const admin = createAdminSupabaseClient();
+  await requireProfile(["supervisor"]);
+  const supabase = await createServerSupabaseClient();
   const clientId = required(formData.get("client_id"), "Cliente");
   const employeeOneId = required(formData.get("employee_1"), "Funcionário 1");
   const employeeTwoId = required(formData.get("employee_2"), "Funcionário 2");
@@ -109,6 +145,7 @@ export async function createEscortAction(formData: FormData) {
   const horaCarregamento = required(formData.get("hora_carregamento"), "Hora do carregamento");
   const encontroAlternativoPermitido = formData.get("encontro_alternativo_permitido") === "on";
   const localAlternativoEncontro = optional(formData.get("local_alternativo_encontro"));
+  const valorBase = Number(required(formData.get("valor_base"), "Valor base"));
 
   if (employeeOneId === employeeTwoId) {
     throw new Error("A escolta deve possuir exatamente 2 funcionários distintos.");
@@ -118,58 +155,82 @@ export async function createEscortAction(formData: FormData) {
     throw new Error("Informe o local alternativo de encontro.");
   }
 
-  const { data: escort, error: escortError } = await admin
-    .from("escorts")
-    .insert({
-      client_id: clientId,
-      data_escolta: dataEscolta,
-      hora_carregamento: horaCarregamento,
-      local_carregamento: required(formData.get("local_carregamento"), "Local do carregamento"),
-      observacao_operacional: optional(formData.get("observacao_operacional")),
-      encontro_alternativo_permitido: encontroAlternativoPermitido,
-      local_alternativo_encontro: localAlternativoEncontro,
-      scheduled_end: scheduledEnd(dataEscolta, horaCarregamento),
-      created_by: profile.id,
-    })
-    .select("id")
-    .single();
+  scheduledEnd(dataEscolta, horaCarregamento);
 
-  if (escortError || !escort) {
-    throw new Error(escortError?.message ?? "Não foi possível criar a escolta.");
-  }
-
-  const { error: teamError } = await admin.from("escort_team").insert([
-    { escort_id: escort.id, employee_id: employeeOneId, position: 1 },
-    { escort_id: escort.id, employee_id: employeeTwoId, position: 2 },
-  ]);
-
-  if (teamError) {
-    await admin.from("escorts").delete().eq("id", escort.id);
-    throw new Error(teamError.message);
-  }
-
-  const { error: financialClientError } = await admin.from("financial_clients").insert({
-    escort_id: escort.id,
-    valor_base: Number(required(formData.get("valor_base"), "Valor base")),
+  const { data: escortId, error } = await supabase.rpc("create_escort_with_team", {
+    p_client_id: clientId,
+    p_data_escolta: dataEscolta,
+    p_hora_carregamento: horaCarregamento,
+    p_local_carregamento: required(formData.get("local_carregamento"), "Local do carregamento"),
+    p_observacao_operacional: optional(formData.get("observacao_operacional")),
+    p_encontro_alternativo_permitido: encontroAlternativoPermitido,
+    p_local_alternativo_encontro: localAlternativoEncontro,
+    p_employee_1: employeeOneId,
+    p_employee_2: employeeTwoId,
+    p_valor_base: valorBase,
   });
 
-  if (financialClientError) {
-    await admin.from("escorts").delete().eq("id", escort.id);
-    throw new Error(financialClientError.message);
-  }
-
-  const { error: financialEmployeesError } = await admin.from("financial_employees").insert([
-    { escort_id: escort.id, employee_id: employeeOneId },
-    { escort_id: escort.id, employee_id: employeeTwoId },
-  ]);
-
-  if (financialEmployeesError) {
-    await admin.from("escorts").delete().eq("id", escort.id);
-    throw new Error(financialEmployeesError.message);
+  if (error || !escortId) {
+    console.error("[createEscortAction] Falha ao criar escolta via RPC", { error });
+    throw new Error(friendlyDatabaseError(error, "Não foi possível criar a escolta. Tente novamente."));
   }
 
   revalidatePath("/agendamentos");
-  redirect(`/agendamentos/${escort.id}`);
+  redirect(`/agendamentos/${escortId}`);
+}
+
+async function employeeHasAnotherActiveEscort(employeeId: string, currentEscortId: string) {
+  const admin = createAdminSupabaseClient();
+  const { data, error } = await admin
+    .from("escort_team")
+    .select("escort_id, escorts!inner(status)")
+    .eq("employee_id", employeeId)
+    .neq("escort_id", currentEscortId)
+    .eq("escorts.status", ACTIVE_ESCORT_STATUS)
+    .limit(1);
+
+  if (error) {
+    console.error("[employeeHasAnotherActiveEscort] Falha ao validar missão ativa", { employeeId, currentEscortId, error });
+    throw new Error("Não foi possível validar se o funcionário possui outra missão ativa.");
+  }
+
+  return Boolean(data?.length);
+}
+
+async function syncEmployeeStatusForEscort(escortId: string, status: EscortStatus, employeeIds: string[]) {
+  const admin = createAdminSupabaseClient();
+
+  if (status === ACTIVE_ESCORT_STATUS) {
+    const { error } = await admin.from("employees").update({ status: "ocupado" }).in("id", employeeIds);
+
+    if (error) {
+      console.error("[syncEmployeeStatusForEscort] Falha ao marcar funcionários como ocupados", { escortId, employeeIds, error });
+      throw new Error("A missão foi atualizada, mas não foi possível marcar a equipe como ocupada.");
+    }
+
+    return;
+  }
+
+  if (!["Finalizada", "Cancelada"].includes(status)) {
+    return;
+  }
+
+  const availabilityChecks = await Promise.all(employeeIds.map(async (employeeId) => ({
+    employeeId,
+    hasAnotherActiveEscort: await employeeHasAnotherActiveEscort(employeeId, escortId),
+  })));
+  const releasableEmployeeIds = availabilityChecks.filter((check) => !check.hasAnotherActiveEscort).map((check) => check.employeeId);
+
+  if (!releasableEmployeeIds.length) {
+    return;
+  }
+
+  const { error } = await admin.from("employees").update({ status: "disponivel" }).in("id", releasableEmployeeIds).eq("status", "ocupado");
+
+  if (error) {
+    console.error("[syncEmployeeStatusForEscort] Falha ao liberar funcionários", { escortId, releasableEmployeeIds, error });
+    throw new Error("A missão foi atualizada, mas não foi possível liberar a equipe com segurança.");
+  }
 }
 
 export async function updateEscortStatusAction(escortId: string, status: EscortStatus) {
@@ -179,6 +240,23 @@ export async function updateEscortStatusAction(escortId: string, status: EscortS
 
   const profile = await requireProfile(["supervisor", "funcionario", "cliente"]);
   const supabase = createAdminSupabaseClient();
+
+  const { data: currentEscort, error: currentEscortError } = await supabase
+    .from("escorts")
+    .select("id, status, inicio_real, fim_real, escort_team(employee_id)")
+    .eq("id", escortId)
+    .maybeSingle();
+
+  if (currentEscortError) {
+    console.error("[updateEscortStatusAction] Falha ao carregar escolta atual", { escortId, error: currentEscortError });
+    throw new Error("Não foi possível carregar a missão para atualizar o status.");
+  }
+
+  if (!currentEscort) {
+    throw new Error("Missão não encontrada.");
+  }
+
+  ensureStatusTransition(currentEscort.status as EscortStatus, status);
 
   if (profile.role === "funcionario") {
     if (!profile.employee_id) {
@@ -205,10 +283,31 @@ export async function updateEscortStatusAction(escortId: string, status: EscortS
   }
 
   const patch = status === "Em andamento" ? { status, inicio_real: new Date().toISOString() } : status === "Finalizada" ? { status, fim_real: new Date().toISOString() } : { status };
-  const { error } = await supabase.from("escorts").update(patch).eq("id", escortId);
+  const { data: updatedEscort, error } = await supabase.from("escorts").update(patch).eq("id", escortId).eq("status", currentEscort.status).select("id").maybeSingle();
 
-  if (error) {
-    throw new Error(error.message);
+  if (error || !updatedEscort) {
+    console.error("[updateEscortStatusAction] Falha ao atualizar status da missão", { escortId, status, error });
+    throw new Error(error ? friendlyDatabaseError(error, "Não foi possível atualizar o status da missão.") : "O status da missão mudou durante a atualização. Recarregue a página e tente novamente.");
+  }
+
+  try {
+    const employeeIds = (currentEscort.escort_team ?? []).map((team) => team.employee_id).filter(Boolean);
+    await syncEmployeeStatusForEscort(escortId, status, employeeIds);
+  } catch (syncError) {
+    const rollbackPatch = {
+      status: currentEscort.status,
+      inicio_real: currentEscort.inicio_real,
+      fim_real: currentEscort.fim_real,
+    };
+    const { error: rollbackError } = await supabase.from("escorts").update(rollbackPatch).eq("id", escortId).eq("status", status);
+
+    console.error("[updateEscortStatusAction] Falha ao sincronizar equipe após status da missão", { escortId, status, syncError, rollbackError });
+
+    if (rollbackError) {
+      throw new Error("A missão foi atualizada, mas houve falha ao sincronizar a equipe. Acione o suporte para revisar a missão.");
+    }
+
+    throw syncError;
   }
 
   revalidatePath(`/agendamentos/${escortId}`);
