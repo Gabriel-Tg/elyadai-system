@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { createAdminSupabaseClient, createServerSupabaseClient } from "@/lib/supabase-server";
 import { shouldUseTemporarySupabaseFallback } from "@/lib/temporary-supervisor-mode";
 import type { Employee, Escort, FinancialClient } from "@/types/database";
 
@@ -44,7 +44,7 @@ export async function getClientDashboard(clientId: string) {
     return [];
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = createAdminSupabaseClient();
   const { data, error } = await supabase
     .from("escorts")
     .select("*, clients(id,nome), financial_clients(*), escort_locations(*)")
@@ -63,7 +63,7 @@ export async function getEmployeeDashboard(employeeId: string) {
     return [];
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = createAdminSupabaseClient();
   const { data, error } = await supabase
     .from("escorts")
     .select("*, clients(id,nome), escort_team!inner(employee_id), financial_employees(*), escort_photos(*)")

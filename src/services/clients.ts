@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createAdminSupabaseClient, createServerSupabaseClient } from "@/lib/supabase-server";
 import { shouldUseTemporarySupabaseFallback } from "@/lib/temporary-supervisor-mode";
 import { initialPassword, optional, required } from "@/validators/records";
-import type { Client, Escort, FinancialClient } from "@/types/database";
+import type { Client, Escort } from "@/types/database";
 
 export async function listClients() {
   if (shouldUseTemporarySupabaseFallback()) {
@@ -27,21 +27,23 @@ export async function getClientDetails(id: string) {
     throw new Error("Cliente indisponível no modo supervisor temporário sem Supabase configurado.");
   }
 
-  const supabase = await createServerSupabaseClient();
-  const [{ data: client, error: clientError }, { data: escorts, error: escortsError }, { data: payments, error: paymentsError }] = await Promise.all([
-    supabase.from("clients").select("*").eq("id", id).single(),
+  const supabase = createAdminSupabaseClient();
+  const [{ data: client, error: clientError }, { data: escorts, error: escortsError }] = await Promise.all([
+    supabase.from("clients").select("*").eq("id", id).maybeSingle(),
     supabase.from("escorts").select("*, financial_clients(*)").eq("client_id", id).order("data_escolta", { ascending: false }),
-    supabase.from("financial_clients").select("*, escorts!inner(client_id)").eq("escorts.client_id", id),
   ]);
 
-  if (clientError || escortsError || paymentsError) {
-    throw new Error(clientError?.message ?? escortsError?.message ?? paymentsError?.message);
+  if (clientError || escortsError) {
+    throw new Error(clientError?.message ?? escortsError?.message);
+  }
+
+  if (!client) {
+    return null;
   }
 
   return {
     client: client as Client,
     escorts: (escorts ?? []) as Escort[],
-    payments: (payments ?? []) as FinancialClient[],
   };
 }
 

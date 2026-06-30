@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createAdminSupabaseClient, createServerSupabaseClient } from "@/lib/supabase-server";
 import { shouldUseTemporarySupabaseFallback } from "@/lib/temporary-supervisor-mode";
 import { initialPassword, required } from "@/validators/records";
-import type { Employee, Escort, FinancialEmployee } from "@/types/database";
+import type { Employee, Escort } from "@/types/database";
 
 export async function listEmployees() {
   if (shouldUseTemporarySupabaseFallback()) {
@@ -27,21 +27,23 @@ export async function getEmployeeDetails(id: string) {
     throw new Error("Funcionário indisponível no modo supervisor temporário sem Supabase configurado.");
   }
 
-  const supabase = await createServerSupabaseClient();
-  const [{ data: employee, error: employeeError }, { data: missions, error: missionsError }, { data: payments, error: paymentsError }] = await Promise.all([
-    supabase.from("employees").select("*").eq("id", id).single(),
+  const supabase = createAdminSupabaseClient();
+  const [{ data: employee, error: employeeError }, { data: missions, error: missionsError }] = await Promise.all([
+    supabase.from("employees").select("*").eq("id", id).maybeSingle(),
     supabase.from("escorts").select("*, escort_team!inner(employee_id)").eq("escort_team.employee_id", id).order("data_escolta", { ascending: false }),
-    supabase.from("financial_employees").select("*, employees(id,nome)").eq("employee_id", id),
   ]);
 
-  if (employeeError || missionsError || paymentsError) {
-    throw new Error(employeeError?.message ?? missionsError?.message ?? paymentsError?.message);
+  if (employeeError || missionsError) {
+    throw new Error(employeeError?.message ?? missionsError?.message);
+  }
+
+  if (!employee) {
+    return null;
   }
 
   return {
     employee: employee as Employee,
     missions: (missions ?? []) as Escort[],
-    payments: (payments ?? []) as FinancialEmployee[],
   };
 }
 

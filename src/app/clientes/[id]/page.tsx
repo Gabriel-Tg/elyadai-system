@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function ClientDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const profile = await requireProfile(["supervisor"]);
   const { id } = await params;
-  const details = await getClientDetails(id).catch(() => null);
+  const details = await getClientDetails(id);
 
   if (!details) notFound();
 

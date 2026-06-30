@@ -4,6 +4,22 @@ import { useEffect, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
 import type { EscortLocation } from "@/types/database";
 
+function positionFor(location: EscortLocation, locations: EscortLocation[]) {
+  const latitudes = locations.map((item) => Number(item.latitude));
+  const longitudes = locations.map((item) => Number(item.longitude));
+  const minLat = Math.min(...latitudes);
+  const maxLat = Math.max(...latitudes);
+  const minLng = Math.min(...longitudes);
+  const maxLng = Math.max(...longitudes);
+  const latSpan = maxLat - minLat || 0.001;
+  const lngSpan = maxLng - minLng || 0.001;
+
+  return {
+    left: `${12 + ((Number(location.longitude) - minLng) / lngSpan) * 76}%`,
+    top: `${88 - ((Number(location.latitude) - minLat) / latSpan) * 76}%`,
+  };
+}
+
 export function RealtimeMap({ escortId, initialLocations }: { escortId: string; initialLocations: EscortLocation[] }) {
   const [locations, setLocations] = useState(initialLocations);
   const latest = locations.at(-1);
@@ -32,7 +48,7 @@ export function RealtimeMap({ escortId, initialLocations }: { escortId: string; 
         <span
           className="absolute grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-white bg-emerald-700 text-xs font-bold text-white shadow-lg"
           key={location.id}
-          style={{ left: `${16 + (index % 5) * 16}%`, top: `${72 - (index % 5) * 12}%` }}
+          style={positionFor(location, locations)}
           title={`${location.latitude}, ${location.longitude}`}
         >
           {index + 1}

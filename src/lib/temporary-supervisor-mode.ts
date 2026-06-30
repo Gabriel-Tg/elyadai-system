@@ -1,6 +1,6 @@
 import type { Profile } from "@/types/database";
 
-export const temporarySupervisorMode = true;
+export const temporarySupervisorMode = false;
 
 export const temporarySupervisorProfile: Profile = {
   id: "temporary-supervisor",
