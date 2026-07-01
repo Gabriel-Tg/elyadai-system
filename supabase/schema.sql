@@ -185,6 +185,22 @@ create table if not exists public.extra_expenses (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.financial_entries (
+  id uuid primary key default gen_random_uuid(),
+  direction text not null check (direction in ('payable', 'receivable')),
+  category text not null check (category in ('combustivel', 'pedagio', 'alimentacao_extra', 'outros', 'cliente', 'funcionario', 'ajuste')),
+  escort_id uuid references public.escorts(id) on delete set null,
+  entry_date date not null,
+  amount numeric(12, 2) not null check (amount > 0),
+  description text not null,
+  status_pagamento public.payment_status not null default 'pendente',
+  payment_date date,
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint financial_entries_paid_date_required check (status_pagamento = 'pendente' or payment_date is not null)
+);
+
 create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
   escort_id uuid references public.escorts(id) on delete cascade,
@@ -216,12 +232,30 @@ drop trigger if exists financial_clients_touch_updated_at on public.financial_cl
 create trigger financial_clients_touch_updated_at before update on public.financial_clients for each row execute function public.touch_updated_at();
 drop trigger if exists financial_employees_touch_updated_at on public.financial_employees;
 create trigger financial_employees_touch_updated_at before update on public.financial_employees for each row execute function public.touch_updated_at();
+drop trigger if exists financial_entries_touch_updated_at on public.financial_entries;
+create trigger financial_entries_touch_updated_at before update on public.financial_entries for each row execute function public.touch_updated_at();
 
 create or replace function public.current_profile_id() returns uuid language sql stable security definer set search_path = public as $$ select id from public.profiles where user_id = auth.uid() $$;
 create or replace function public.current_role() returns public.user_role language sql stable security definer set search_path = public as $$ select role from public.profiles where user_id = auth.uid() $$;
 create or replace function public.current_client_id() returns uuid language sql stable security definer set search_path = public as $$ select client_id from public.profiles where user_id = auth.uid() $$;
 create or replace function public.current_employee_id() returns uuid language sql stable security definer set search_path = public as $$ select employee_id from public.profiles where user_id = auth.uid() $$;
 create or replace function public.is_supervisor() returns boolean language sql stable security definer set search_path = public as $$ select coalesce(public.current_role() = 'supervisor', false) $$;
+create or replace function public.employee_has_escort(p_escort_id uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1
+    from public.escort_team team
+    where team.escort_id = p_escort_id
+      and team.employee_id = public.current_employee_id()
+  )
+$$;
+create or replace function public.client_has_escort(p_escort_id uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1
+    from public.escorts escort
+    where escort.id = p_escort_id
+      and escort.client_id = public.current_client_id()
+  )
+$$;
 
 create or replace function public.validate_escort_team_size() returns trigger language plpgsql as $$
 declare
@@ -230,7 +264,7 @@ declare
 begin
   target_escort_id := coalesce(new.escort_id, old.escort_id);
   select count(*) into team_count from public.escort_team where escort_id = target_escort_id;
-  if team_count <> 1 then raise exception 'Cada escolta deve possuir exatamente 1 funcionário'; end if;
+  if team_count < 1 or team_count > 2 then raise exception 'Cada escolta deve possuir 1 ou 2 funcionários'; end if;
   return null;
 end;
 $$;
@@ -250,7 +284,7 @@ begin
     join public.escorts existing_escort on existing_escort.id = existing_team.escort_id
     where existing_team.employee_id = new.employee_id
       and existing_team.escort_id <> new.escort_id
-      and existing_escort.status <> 'Cancelada'
+      and existing_escort.status in ('Agendada', 'Em andamento')
       and new_start < existing_escort.scheduled_end
       and new_end > (existing_escort.data_escolta + existing_escort.hora_carregamento)::timestamptz
   ) into conflict_exists;
@@ -350,8 +384,8 @@ begin
 
   if new.status = 'Em andamento' then
     select count(*) into team_count from public.escort_team where escort_id = new.id;
-    if team_count <> 1 then
-      raise exception 'Cada escolta deve possuir exatamente 1 funcionário';
+    if team_count < 1 or team_count > 2 then
+      raise exception 'Cada escolta deve possuir 1 ou 2 funcionários';
     end if;
 
     perform 1
@@ -466,24 +500,27 @@ declare
 begin
   if not public.is_supervisor() then raise exception 'Somente supervisores podem criar escoltas'; end if;
   if p_employee_1 is null then raise exception 'Informe o funcionário responsável pela escolta'; end if;
+  if p_employee_2 is not null and p_employee_2 = p_employee_1 then raise exception 'Funcionário 2 deve ser diferente do funcionário 1'; end if;
   if p_encontro_alternativo_permitido and nullif(trim(coalesce(p_local_alternativo_encontro, '')), '') is null then raise exception 'Informe o local alternativo de encontro'; end if;
   v_start := (p_data_escolta + p_hora_carregamento)::timestamptz;
   v_end := v_start + interval '24 hours';
   if exists (
     select 1 from public.escort_team team
     join public.escorts escort on escort.id = team.escort_id
-    where team.employee_id = p_employee_1
-      and escort.status <> 'Cancelada'
+    where team.employee_id in (p_employee_1, p_employee_2)
+      and escort.status in ('Agendada', 'Em andamento')
       and v_start < escort.scheduled_end
       and v_end > (escort.data_escolta + escort.hora_carregamento)::timestamptz
   ) then raise exception 'Funcionário já está em outra escolta no mesmo horário'; end if;
   insert into public.escorts (client_id, data_escolta, hora_carregamento, local_carregamento, observacao_operacional, encontro_alternativo_permitido, local_alternativo_encontro, scheduled_end, created_by)
   values (p_client_id, p_data_escolta, p_hora_carregamento, p_local_carregamento, p_observacao_operacional, p_encontro_alternativo_permitido, p_local_alternativo_encontro, v_end, public.current_profile_id()) returning id into v_escort_id;
   insert into public.escort_team (escort_id, employee_id, position) values (v_escort_id, p_employee_1, 1);
+  if p_employee_2 is not null then insert into public.escort_team (escort_id, employee_id, position) values (v_escort_id, p_employee_2, 2); end if;
   insert into public.financial_clients (escort_id, valor_base) values (v_escort_id, p_valor_base);
   insert into public.financial_employees (escort_id, employee_id) values (v_escort_id, p_employee_1);
+  if p_employee_2 is not null then insert into public.financial_employees (escort_id, employee_id) values (v_escort_id, p_employee_2); end if;
   insert into public.notifications (escort_id, user_id, canal, target_role, mensagem)
-  select v_escort_id, profiles.user_id, 'Interna', profiles.role, 'Nova escolta agendada' from public.profiles where profiles.client_id = p_client_id or profiles.employee_id = p_employee_1;
+  select v_escort_id, profiles.user_id, 'Interna', profiles.role, 'Nova escolta agendada' from public.profiles where profiles.client_id = p_client_id or profiles.employee_id in (p_employee_1, p_employee_2);
   return v_escort_id;
 end;
 $$;
@@ -543,6 +580,8 @@ create index if not exists escort_locations_live_idx on public.escort_locations 
 create index if not exists escort_photos_escort_idx on public.escort_photos (escort_id, taken_at desc);
 create index if not exists financial_clients_status_idx on public.financial_clients (status_pagamento);
 create index if not exists financial_employees_status_idx on public.financial_employees (status_pagamento);
+create index if not exists financial_entries_status_idx on public.financial_entries (direction, status_pagamento, entry_date desc);
+create index if not exists financial_entries_escort_idx on public.financial_entries (escort_id);
 create index if not exists extra_expenses_escort_idx on public.extra_expenses (escort_id);
 create index if not exists notifications_user_idx on public.notifications (user_id, read_at);
 
@@ -558,6 +597,7 @@ alter table public.escort_photos enable row level security;
 alter table public.escort_status_history enable row level security;
 alter table public.financial_clients enable row level security;
 alter table public.financial_employees enable row level security;
+alter table public.financial_entries enable row level security;
 alter table public.extra_expenses enable row level security;
 alter table public.notifications enable row level security;
 
@@ -582,51 +622,57 @@ create policy "cliente ve suas escorts" on public.escorts for select using (clie
 drop policy if exists "cliente reagenda cancela suas escorts" on public.escorts;
 create policy "cliente reagenda cancela suas escorts" on public.escorts for update using (client_id = public.current_client_id()) with check (client_id = public.current_client_id());
 drop policy if exists "funcionario ve missoes" on public.escorts;
-create policy "funcionario ve missoes" on public.escorts for select using (exists (select 1 from public.escort_team team where team.escort_id = escorts.id and team.employee_id = public.current_employee_id()));
+create policy "funcionario ve missoes" on public.escorts for select using (public.employee_has_escort(id));
 drop policy if exists "funcionario atualiza missoes" on public.escorts;
-create policy "funcionario atualiza missoes" on public.escorts for update using (exists (select 1 from public.escort_team team where team.escort_id = escorts.id and team.employee_id = public.current_employee_id())) with check (exists (select 1 from public.escort_team team where team.escort_id = escorts.id and team.employee_id = public.current_employee_id()));
+create policy "funcionario atualiza missoes" on public.escorts for update using (public.employee_has_escort(id)) with check (public.employee_has_escort(id));
 drop policy if exists "supervisor total escort_team" on public.escort_team;
 create policy "supervisor total escort_team" on public.escort_team for all using (public.is_supervisor()) with check (public.is_supervisor());
 drop policy if exists "cliente ve equipe das suas escorts" on public.escort_team;
-create policy "cliente ve equipe das suas escorts" on public.escort_team for select using (exists (select 1 from public.escorts escort where escort.id = escort_team.escort_id and escort.client_id = public.current_client_id()));
+create policy "cliente ve equipe das suas escorts" on public.escort_team for select using (public.client_has_escort(escort_id));
 drop policy if exists "funcionario ve propria equipe" on public.escort_team;
 create policy "funcionario ve propria equipe" on public.escort_team for select using (employee_id = public.current_employee_id());
 drop policy if exists "supervisor total locations" on public.escort_locations;
 create policy "supervisor total locations" on public.escort_locations for all using (public.is_supervisor()) with check (public.is_supervisor());
 drop policy if exists "cliente ve localizacoes das suas escorts" on public.escort_locations;
-create policy "cliente ve localizacoes das suas escorts" on public.escort_locations for select using (exists (select 1 from public.escorts escort where escort.id = escort_locations.escort_id and escort.client_id = public.current_client_id()));
+create policy "cliente ve localizacoes das suas escorts" on public.escort_locations for select using (public.client_has_escort(escort_id));
 drop policy if exists "funcionario ve suas localizacoes" on public.escort_locations;
 create policy "funcionario ve suas localizacoes" on public.escort_locations for select using (employee_id = public.current_employee_id());
 drop policy if exists "funcionario envia sua localizacao" on public.escort_locations;
-create policy "funcionario envia sua localizacao" on public.escort_locations for insert with check (employee_id = public.current_employee_id() and exists (select 1 from public.escort_team team where team.escort_id = escort_locations.escort_id and team.employee_id = public.current_employee_id()));
+create policy "funcionario envia sua localizacao" on public.escort_locations for insert with check (employee_id = public.current_employee_id() and public.employee_has_escort(escort_id));
 drop policy if exists "supervisor total photos" on public.escort_photos;
 create policy "supervisor total photos" on public.escort_photos for all using (public.is_supervisor()) with check (public.is_supervisor());
 drop policy if exists "cliente ve fotos das suas escorts" on public.escort_photos;
-create policy "cliente ve fotos das suas escorts" on public.escort_photos for select using (exists (select 1 from public.escorts escort where escort.id = escort_photos.escort_id and escort.client_id = public.current_client_id()));
+create policy "cliente ve fotos das suas escorts" on public.escort_photos for select using (public.client_has_escort(escort_id));
 drop policy if exists "funcionario ve suas fotos" on public.escort_photos;
 create policy "funcionario ve suas fotos" on public.escort_photos for select using (employee_id = public.current_employee_id());
 drop policy if exists "funcionario envia suas fotos" on public.escort_photos;
-create policy "funcionario envia suas fotos" on public.escort_photos for insert with check (employee_id = public.current_employee_id() and exists (select 1 from public.escort_team team where team.escort_id = escort_photos.escort_id and team.employee_id = public.current_employee_id()));
+create policy "funcionario envia suas fotos" on public.escort_photos for insert with check (employee_id = public.current_employee_id() and public.employee_has_escort(escort_id));
 drop policy if exists "supervisor ve historico" on public.escort_status_history;
 create policy "supervisor ve historico" on public.escort_status_history for all using (public.is_supervisor()) with check (public.is_supervisor());
 drop policy if exists "cliente ve historico das suas escorts" on public.escort_status_history;
-create policy "cliente ve historico das suas escorts" on public.escort_status_history for select using (exists (select 1 from public.escorts escort where escort.id = escort_status_history.escort_id and escort.client_id = public.current_client_id()));
+create policy "cliente ve historico das suas escorts" on public.escort_status_history for select using (public.client_has_escort(escort_id));
 drop policy if exists "funcionario ve historico das suas escorts" on public.escort_status_history;
-create policy "funcionario ve historico das suas escorts" on public.escort_status_history for select using (exists (select 1 from public.escort_team team where team.escort_id = escort_status_history.escort_id and team.employee_id = public.current_employee_id()));
+create policy "funcionario ve historico das suas escorts" on public.escort_status_history for select using (public.employee_has_escort(escort_id));
 drop policy if exists "supervisor total financial_clients" on public.financial_clients;
 create policy "supervisor total financial_clients" on public.financial_clients for all using (public.is_supervisor()) with check (public.is_supervisor());
 drop policy if exists "cliente ve seus pagamentos" on public.financial_clients;
-create policy "cliente ve seus pagamentos" on public.financial_clients for select using (exists (select 1 from public.escorts escort where escort.id = financial_clients.escort_id and escort.client_id = public.current_client_id()));
+create policy "cliente ve seus pagamentos" on public.financial_clients for select using (public.client_has_escort(escort_id));
 drop policy if exists "supervisor total financial_employees" on public.financial_employees;
 create policy "supervisor total financial_employees" on public.financial_employees for all using (public.is_supervisor()) with check (public.is_supervisor());
 drop policy if exists "funcionario ve seus pagamentos" on public.financial_employees;
 create policy "funcionario ve seus pagamentos" on public.financial_employees for select using (employee_id = public.current_employee_id());
+drop policy if exists "supervisor total financial_entries" on public.financial_entries;
+create policy "supervisor total financial_entries" on public.financial_entries for all using (public.is_supervisor()) with check (public.is_supervisor());
+drop policy if exists "cliente ve seus lancamentos financeiros" on public.financial_entries;
+create policy "cliente ve seus lancamentos financeiros" on public.financial_entries for select using (direction = 'receivable' and public.client_has_escort(escort_id));
+drop policy if exists "funcionario ve seus lancamentos financeiros" on public.financial_entries;
+create policy "funcionario ve seus lancamentos financeiros" on public.financial_entries for select using (direction = 'payable' and public.employee_has_escort(escort_id));
 drop policy if exists "supervisor total expenses" on public.extra_expenses;
 create policy "supervisor total expenses" on public.extra_expenses for all using (public.is_supervisor()) with check (public.is_supervisor());
 drop policy if exists "cliente ve gastos das suas escorts" on public.extra_expenses;
-create policy "cliente ve gastos das suas escorts" on public.extra_expenses for select using (exists (select 1 from public.escorts escort where escort.id = extra_expenses.escort_id and escort.client_id = public.current_client_id()));
+create policy "cliente ve gastos das suas escorts" on public.extra_expenses for select using (public.client_has_escort(escort_id));
 drop policy if exists "funcionario ve gastos das suas escorts" on public.extra_expenses;
-create policy "funcionario ve gastos das suas escorts" on public.extra_expenses for select using (exists (select 1 from public.escort_team team where team.escort_id = extra_expenses.escort_id and team.employee_id = public.current_employee_id()));
+create policy "funcionario ve gastos das suas escorts" on public.extra_expenses for select using (public.employee_has_escort(escort_id));
 drop policy if exists "supervisor total notifications" on public.notifications;
 create policy "supervisor total notifications" on public.notifications for all using (public.is_supervisor()) with check (public.is_supervisor());
 drop policy if exists "usuario ve notificacoes proprias" on public.notifications;

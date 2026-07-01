@@ -13,10 +13,10 @@ export default async function NewEscortPage() {
   return (
     <AppShell profile={profile}>
       <div className="mb-6">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Agendamento</p>
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--muted)]">Agendamento</p>
         <h1 className="font-display text-3xl font-bold">Nova escolta</h1>
       </div>
-      <EscortForm clients={clients} employees={employees.filter((employee) => employee.status !== "folga")} />
+      <EscortForm clients={clients} employees={employees.filter((employee) => employee.status === "disponivel")} />
     </AppShell>
   );
 }

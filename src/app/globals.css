@@ -1,8 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f2ea;
-  --foreground: #1c1917;
+  --background: #0d1117;
+  --foreground: #f0f6fc;
+  --surface: #161b22;
+  --surface-elevated: #21262d;
+  --surface-muted: #30363d;
+  --border: #30363d;
+  --border-strong: #8b949e;
+  --muted: #8b949e;
+  --muted-strong: #c9d1d9;
+  --tactical-blue: #1f6feb;
+  --alert-red: #da3633;
+  --operational-green: #238636;
+  --attention-yellow: #d29922;
+  --glow-blue: 0 0 0 1px rgba(31, 111, 235, 0.55), 0 0 22px rgba(31, 111, 235, 0.24);
+  --glow-green: 0 0 0 1px rgba(35, 134, 54, 0.58), 0 0 22px rgba(35, 134, 54, 0.2);
+  --glow-red: 0 0 0 1px rgba(218, 54, 51, 0.58), 0 0 22px rgba(218, 54, 51, 0.2);
+  --glow-yellow: 0 0 0 1px rgba(210, 153, 34, 0.55), 0 0 22px rgba(210, 153, 34, 0.18);
 }
 
 @theme inline {
@@ -18,21 +33,82 @@ body {
   font-family: var(--font-sans), sans-serif;
 }
 
+::selection {
+  background: rgba(31, 111, 235, 0.45);
+  color: #ffffff;
+}
+
 button,
-select {
+input,
+select,
+textarea {
   font: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .font-display {
   font-family: var(--font-display), sans-serif;
 }
 
+.tactical-shell {
+  background:
+    linear-gradient(135deg, rgba(31, 111, 235, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(13, 17, 23, 0.98), rgba(13, 17, 23, 1)),
+    radial-gradient(circle at 82% 8%, rgba(35, 134, 54, 0.14), transparent 28%);
+}
+
+.tactical-scanline {
+  background-image:
+    linear-gradient(rgba(240, 246, 252, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(240, 246, 252, 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.field-control {
+  width: 100%;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border);
+  background: rgba(13, 17, 23, 0.78);
+  color: var(--foreground);
+  padding: 0.75rem;
+  outline: none;
+}
+
+.field-control:focus {
+  border-color: var(--tactical-blue);
+  box-shadow: var(--glow-blue);
+}
+
+.field-label {
+  color: var(--muted-strong);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
 .map-grid {
   background-image:
-    linear-gradient(rgba(68, 64, 60, 0.14) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(68, 64, 60, 0.14) 1px, transparent 1px),
-    radial-gradient(circle at 25% 32%, rgba(16, 185, 129, 0.18), transparent 26%),
-    radial-gradient(circle at 72% 55%, rgba(245, 158, 11, 0.2), transparent 24%);
+    linear-gradient(rgba(139, 148, 158, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(139, 148, 158, 0.16) 1px, transparent 1px),
+    radial-gradient(circle at 25% 32%, rgba(35, 134, 54, 0.22), transparent 26%),
+    radial-gradient(circle at 72% 55%, rgba(31, 111, 235, 0.2), transparent 24%);
   background-size: 44px 44px, 44px 44px, 100% 100%, 100% 100%;
 }
 

@@ -5,7 +5,17 @@ import { redirect } from "next/navigation";
 import { createAdminSupabaseClient, createServerSupabaseClient } from "@/lib/supabase-server";
 import { shouldUseTemporarySupabaseFallback } from "@/lib/temporary-supervisor-mode";
 import { initialPassword, required } from "@/validators/records";
-import type { Employee, Escort } from "@/types/database";
+import type { Employee, EmployeeStatus, Escort } from "@/types/database";
+
+function employeeStatus(value: FormDataEntryValue | null): EmployeeStatus {
+  const status = required(value, "Status");
+
+  if (status === "disponivel" || status === "folga") {
+    return status;
+  }
+
+  throw new Error("Status manual deve ser disponível ou folga.");
+}
 
 export async function listEmployees() {
   if (shouldUseTemporarySupabaseFallback()) {
@@ -57,7 +67,6 @@ export async function createEmployeeAction(formData: FormData) {
   const telefone = required(formData.get("telefone"), "Telefone");
   const email = required(formData.get("email"), "Email de acesso");
   const password = initialPassword(formData.get("senha_inicial"));
-  const status = required(formData.get("status"), "Status");
   const admin = createAdminSupabaseClient();
 
   const { data: userData, error: userError } = await admin.auth.admin.createUser({
@@ -83,7 +92,7 @@ export async function createEmployeeAction(formData: FormData) {
 
   const { data: employee, error: employeeError } = await admin
     .from("employees")
-    .insert({ nome, cpf, telefone, status, profile_id: profile.id })
+    .insert({ nome, cpf, telefone, profile_id: profile.id })
     .select("*")
     .single();
 
@@ -94,4 +103,23 @@ export async function createEmployeeAction(formData: FormData) {
   await admin.from("profiles").update({ employee_id: employee.id }).eq("id", profile.id);
   revalidatePath("/funcionarios");
   redirect(`/funcionarios/${employee.id}`);
+}
+
+export async function updateEmployeeStatusAction(formData: FormData) {
+  if (shouldUseTemporarySupabaseFallback()) {
+    throw new Error("Atualizações ficam indisponíveis no modo supervisor temporário sem Supabase configurado.");
+  }
+
+  const employeeId = required(formData.get("employee_id"), "Funcionário");
+  const status = employeeStatus(formData.get("status"));
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.from("employees").update({ status }).eq("id", employeeId).neq("status", "ocupado");
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/funcionarios");
+  revalidatePath(`/funcionarios/${employeeId}`);
+  revalidatePath("/dashboard");
 }

@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { MapPin, Square } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { sendCurrentEmployeeLocationAction } from "@/services/escorts";
 
 type TrackerStatus = "idle" | "tracking" | "unsupported" | "denied" | "error";
@@ -70,25 +72,23 @@ export function EmployeeLocationTracker({ escortId }: { escortId: string }) {
   }[status];
 
   return (
-    <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+    <section className="rounded-lg border border-[var(--operational-green)] bg-[rgba(35,134,54,0.1)] p-5 shadow-[var(--glow-green)]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="font-display text-xl font-bold text-stone-950">GPS em tempo real</h2>
-          <p className="mt-1 text-sm text-stone-700">{helper}</p>
+          <h2 className="font-display text-xl font-bold text-[var(--foreground)]">GPS em tempo real</h2>
+          <p className="mt-1 text-sm text-[var(--muted-strong)]">{helper}</p>
         </div>
-        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-emerald-800">
-          {status === "tracking" ? "Ativo" : "Parado"}
-        </span>
+        <StatusBadge tone={status === "tracking" ? "success" : "neutral"} value={status === "tracking" ? "Ativo" : "Parado"} />
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
-        <button className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 py-3 text-sm font-bold text-white disabled:opacity-60" disabled={status === "tracking" || isPending} onClick={startTracking} type="button">
+        <Button className="w-full" disabled={status === "tracking" || isPending} onClick={startTracking} type="button" variant="success">
           <MapPin size={18} />
           Ativar GPS
-        </button>
-        <button className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 py-3 text-sm font-bold text-emerald-900" onClick={stopTracking} type="button">
+        </Button>
+        <Button className="w-full" onClick={stopTracking} type="button" variant="secondary">
           <Square size={18} />
           Parar
-        </button>
+        </Button>
       </div>
     </section>
   );

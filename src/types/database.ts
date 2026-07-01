@@ -2,6 +2,8 @@ export type UserRole = "supervisor" | "funcionario" | "cliente";
 export type EmployeeStatus = "disponivel" | "ocupado" | "folga";
 export type EscortStatus = "Agendada" | "Em andamento" | "Finalizada" | "Cancelada" | "Reagendada";
 export type PaymentStatus = "pendente" | "pago";
+export type FinancialEntryDirection = "payable" | "receivable";
+export type FinancialEntryCategory = "combustivel" | "pedagio" | "alimentacao_extra" | "outros" | "cliente" | "funcionario" | "ajuste";
 
 export type Profile = {
   id: string;
@@ -101,6 +103,7 @@ export type FinancialClient = {
   paid_at: string | null;
   created_at: string;
   updated_at: string;
+  escorts?: Pick<Escort, "id" | "data_escolta" | "local_carregamento"> & { clients?: Pick<Client, "nome"> | null } | null;
 };
 
 export type FinancialEmployee = {
@@ -116,6 +119,7 @@ export type FinancialEmployee = {
   created_at: string;
   updated_at: string;
   employees?: Pick<Employee, "id" | "nome"> | null;
+  escorts?: Pick<Escort, "id" | "data_escolta"> | null;
 };
 
 export type ExtraExpense = {
@@ -127,6 +131,26 @@ export type ExtraExpense = {
   receipt_path: string | null;
   created_by: string | null;
   created_at: string;
+};
+
+export type FinancialEntry = {
+  id: string;
+  direction: FinancialEntryDirection;
+  category: FinancialEntryCategory;
+  escort_id: string | null;
+  entry_date: string;
+  amount: number;
+  description: string;
+  status_pagamento: PaymentStatus;
+  payment_date: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  escorts?: Pick<Escort, "id" | "data_escolta" | "local_carregamento"> & { clients?: Pick<Client, "nome"> | null } | null;
+};
+
+export type FinancialEscortOption = Pick<Escort, "id" | "data_escolta" | "local_carregamento"> & {
+  clients?: Pick<Client, "nome"> | null;
 };
 
 export type NotificationItem = {
@@ -153,6 +177,7 @@ export type Database = {
       escort_photos: { Row: EscortPhoto };
       financial_clients: { Row: FinancialClient };
       financial_employees: { Row: FinancialEmployee };
+      financial_entries: { Row: FinancialEntry };
       extra_expenses: { Row: ExtraExpense };
       notifications: { Row: NotificationItem };
     };

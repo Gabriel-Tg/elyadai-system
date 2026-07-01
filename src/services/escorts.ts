@@ -27,8 +27,8 @@ function friendlyDatabaseError(error: { message: string } | null | undefined, fa
     return "Um dos funcionários selecionados já está vinculado a outra escolta no mesmo horário.";
   }
 
-  if (error.message.includes("Cada escolta deve possuir exatamente 1 funcionário") || error.message.includes("funcionário responsável")) {
-    return "A escolta deve possuir exatamente 1 funcionário responsável.";
+  if (error.message.includes("Cada escolta deve possuir") || error.message.includes("funcionário responsável")) {
+    return "A escolta deve possuir 1 funcionário responsável e, opcionalmente, um funcionário 2.";
   }
 
   if (error.message.includes("Informe o local alternativo")) {
@@ -52,6 +52,25 @@ function scheduledEnd(dataEscolta: string, horaCarregamento: string) {
   }
 
   return new Date(start.getTime() + 24 * 60 * 60 * 1000).toISOString();
+}
+
+async function findScheduleConflict(employeeIds: string[], startIso: string, endIso: string) {
+  const admin = createAdminSupabaseClient();
+  const { data, error } = await admin
+    .from("escort_team")
+    .select("employee_id, employees(nome), escorts!inner(id, status, data_escolta, hora_carregamento, scheduled_end)")
+    .in("employee_id", employeeIds)
+    .in("escorts.status", ["Agendada", "Em andamento"])
+    .lt("escorts.data_escolta", endIso.slice(0, 10))
+    .gt("escorts.scheduled_end", startIso)
+    .limit(1);
+
+  if (error) {
+    console.error("[findScheduleConflict] Falha ao validar agenda dos funcionários", { employeeIds, startIso, endIso, error });
+    throw new Error("Não foi possível validar a agenda dos funcionários selecionados.");
+  }
+
+  return data?.[0] ?? null;
 }
 
 async function ensurePrimaryEmployeeAssigned(escortId: string, employeeId: string) {
@@ -132,26 +151,75 @@ export async function getEscortDetails(id: string) {
   };
 }
 
-export async function createEscortAction(formData: FormData) {
+export type EscortActionState = {
+  error?: string;
+};
+
+export async function createEscortAction(_state: EscortActionState, formData: FormData): Promise<EscortActionState> {
   if (shouldUseTemporarySupabaseFallback()) {
-    throw new Error("Agendamentos ficam indisponíveis no modo supervisor temporário sem Supabase configurado.");
+    return { error: "Agendamentos ficam indisponíveis no modo supervisor temporário sem Supabase configurado." };
   }
 
-  await requireProfile(["supervisor"]);
+  try {
+    await requireProfile(["supervisor"]);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Perfil sem permissão para criar agendamentos." };
+  }
+
   const supabase = await createServerSupabaseClient();
-  const clientId = required(formData.get("client_id"), "Cliente");
-  const employeeOneId = required(formData.get("employee_1"), "Funcionário 1");
-  const dataEscolta = required(formData.get("data_escolta"), "Data da escolta");
-  const horaCarregamento = required(formData.get("hora_carregamento"), "Hora do carregamento");
+
+  let clientId: string;
+  let employeeOneId: string;
+  let employeeTwoId: string | null;
+  let dataEscolta: string;
+  let horaCarregamento: string;
+  let localAlternativoEncontro: string | null;
+  let valorBase: number;
+
+  try {
+    clientId = required(formData.get("client_id"), "Cliente");
+    employeeOneId = required(formData.get("employee_1"), "Funcionário 1");
+    employeeTwoId = optional(formData.get("employee_2"));
+    dataEscolta = required(formData.get("data_escolta"), "Data da escolta");
+    horaCarregamento = required(formData.get("hora_carregamento"), "Hora do carregamento");
+    localAlternativoEncontro = optional(formData.get("local_alternativo_encontro"));
+    valorBase = Number(required(formData.get("valor_base"), "Valor base"));
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Verifique os dados do agendamento." };
+  }
+
   const encontroAlternativoPermitido = formData.get("encontro_alternativo_permitido") === "on";
-  const localAlternativoEncontro = optional(formData.get("local_alternativo_encontro"));
-  const valorBase = Number(required(formData.get("valor_base"), "Valor base"));
 
   if (encontroAlternativoPermitido && !localAlternativoEncontro) {
-    throw new Error("Informe o local alternativo de encontro.");
+    return { error: "Informe o local alternativo de encontro." };
   }
 
-  scheduledEnd(dataEscolta, horaCarregamento);
+  if (employeeTwoId && employeeTwoId === employeeOneId) {
+    return { error: "Funcionário 2 deve ser diferente do funcionário 1." };
+  }
+
+  let scheduledEndIso: string;
+
+  try {
+    scheduledEndIso = scheduledEnd(dataEscolta, horaCarregamento);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Data ou hora da escolta inválida." };
+  }
+
+  const startIso = new Date(`${dataEscolta}T${horaCarregamento}`).toISOString();
+  const selectedEmployeeIds = [employeeOneId, employeeTwoId].filter((employeeId): employeeId is string => Boolean(employeeId));
+  let hasLocalConflict = false;
+
+  try {
+    const conflict = await findScheduleConflict(selectedEmployeeIds, startIso, scheduledEndIso);
+
+    if (conflict) {
+      hasLocalConflict = true;
+      return { error: "Um dos funcionários selecionados já está vinculado a outra escolta agendada ou em andamento no mesmo horário." };
+    }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Não foi possível validar a agenda dos funcionários selecionados." };
+  }
 
   const { data: escortId, error } = await supabase.rpc("create_escort_with_team", {
     p_client_id: clientId,
@@ -162,13 +230,17 @@ export async function createEscortAction(formData: FormData) {
     p_encontro_alternativo_permitido: encontroAlternativoPermitido,
     p_local_alternativo_encontro: localAlternativoEncontro,
     p_employee_1: employeeOneId,
-    p_employee_2: null,
+    p_employee_2: employeeTwoId,
     p_valor_base: valorBase,
   });
 
   if (error || !escortId) {
     console.error("[createEscortAction] Falha ao criar escolta via RPC", { error });
-    throw new Error(friendlyDatabaseError(error, "Não foi possível criar a escolta. Tente novamente."));
+    if (!hasLocalConflict && error?.message?.includes("Funcionário já está em outra escolta")) {
+      return { error: "A validação local não encontrou conflito para esses funcionários. A função de agendamento no Supabase provavelmente está desatualizada; aplique novamente o schema do projeto no banco e tente criar a escolta." };
+    }
+
+    return { error: friendlyDatabaseError(error, "Não foi possível criar a escolta. Tente novamente.") };
   }
 
   revalidatePath("/agendamentos");
