@@ -28,7 +28,7 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
       </Panel>
       <h2 className="mt-8 font-display text-2xl font-bold">Escoltas do cliente</h2>
       <div className="mt-4">
-        <RecordTable columns={["Data", "Status", "Local", "Pagamento"]} rows={details.escorts.map((escort) => ({ href: `/agendamentos/${escort.id}`, cells: [escort.data_escolta, escort.status, escort.local_carregamento, escort.financial_clients?.[0]?.status_pagamento ?? "-"] }))} />
+        <RecordTable columns={["Data", "Status", "Origem", "Destino", "Pagamento"]} rows={details.escorts.map((escort) => ({ href: `/agendamentos/${escort.id}`, cells: [escort.data_escolta, escort.status, escort.local_carregamento, escort.local_destino, escort.financial_clients?.[0]?.status_pagamento ?? "-"] }))} />
       </div>
     </AppShell>
   );

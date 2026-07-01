@@ -31,10 +31,10 @@ export default async function DashboardPage() {
       </section>
       <section className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
         <RecordTable
-          columns={["Cliente", "Data", "Status", "Local"]}
+          columns={["Cliente", "Data", "Status", "Origem", "Destino"]}
           rows={data.escorts.slice(0, 8).map((escort) => ({
             href: `/agendamentos/${escort.id}`,
-            cells: [escort.clients?.nome ?? escort.client_id, escort.data_escolta, escort.status, escort.local_carregamento],
+            cells: [escort.clients?.nome ?? escort.client_id, escort.data_escolta, escort.status, escort.local_carregamento, escort.local_destino],
           }))}
         />
         <Panel className="p-5">

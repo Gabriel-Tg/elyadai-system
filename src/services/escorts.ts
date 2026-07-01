@@ -226,6 +226,7 @@ export async function createEscortAction(_state: EscortActionState, formData: Fo
     p_data_escolta: dataEscolta,
     p_hora_carregamento: horaCarregamento,
     p_local_carregamento: required(formData.get("local_carregamento"), "Local do carregamento"),
+    p_local_destino: required(formData.get("local_destino"), "Local de destino"),
     p_observacao_operacional: optional(formData.get("observacao_operacional")),
     p_encontro_alternativo_permitido: encontroAlternativoPermitido,
     p_local_alternativo_encontro: localAlternativoEncontro,
@@ -413,6 +414,7 @@ export async function sendLocationAction(profile: Profile, formData: FormData) {
     throw new Error(error.message);
   }
 
+  revalidatePath(`/agendamentos/${escortId}`);
   revalidatePath("/funcionario/dashboard");
 }
 

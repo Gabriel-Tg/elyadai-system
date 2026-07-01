@@ -29,7 +29,7 @@ export default async function EmployeeDetailsPage({ params }: { params: Promise<
       </Panel>
       <h2 className="mt-8 font-display text-2xl font-bold">Missões</h2>
       <div className="mt-4">
-        <RecordTable columns={["Data", "Status", "Local"]} rows={details.missions.map((escort) => ({ href: `/agendamentos/${escort.id}`, cells: [escort.data_escolta, escort.status, escort.local_carregamento] }))} />
+        <RecordTable columns={["Data", "Status", "Origem", "Destino"]} rows={details.missions.map((escort) => ({ href: `/agendamentos/${escort.id}`, cells: [escort.data_escolta, escort.status, escort.local_carregamento, escort.local_destino] }))} />
       </div>
     </AppShell>
   );

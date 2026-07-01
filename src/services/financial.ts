@@ -63,8 +63,8 @@ export async function getFinancialOverview() {
     supabase.from("financial_clients").select("*, escorts(id, clients(nome))").order("created_at", { ascending: false }),
     supabase.from("financial_employees").select("*, employees(id,nome), escorts(id, data_escolta)").order("created_at", { ascending: false }),
     supabase.from("extra_expenses").select("*").order("created_at", { ascending: false }),
-    supabase.from("financial_entries").select("*, escorts(id, data_escolta, local_carregamento, clients(nome))").order("entry_date", { ascending: false }),
-    supabase.from("escorts").select("id, data_escolta, local_carregamento, clients(nome)").order("data_escolta", { ascending: false }),
+    supabase.from("financial_entries").select("*, escorts(id, data_escolta, local_carregamento, local_destino, clients(nome))").order("entry_date", { ascending: false }),
+    supabase.from("escorts").select("id, data_escolta, local_carregamento, local_destino, clients(nome)").order("data_escolta", { ascending: false }),
   ]);
 
   return {

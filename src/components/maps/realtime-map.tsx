@@ -24,11 +24,19 @@ function formatRecordedAt(value: string | null | undefined) {
 }
 
 function googleMapsEmbedUrl(location: EscortLocation) {
-  return `https://www.google.com/maps?q=${encodeURIComponent(`${location.latitude},${location.longitude}`)}&z=18&output=embed`;
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_API_KEY;
+
+  if (!apiKey) return null;
+
+  return `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(apiKey)}&q=${encodeURIComponent(`${location.latitude},${location.longitude}`)}&zoom=18`;
 }
 
 function googleMapsRouteEmbedUrl(location: EscortLocation, destination: string) {
-  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(`${location.latitude},${location.longitude}`)}&destination=${encodeURIComponent(destination)}&travelmode=driving&output=embed`;
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_API_KEY;
+
+  if (!apiKey) return null;
+
+  return `https://www.google.com/maps/embed/v1/directions?key=${encodeURIComponent(apiKey)}&origin=${encodeURIComponent(`${location.latitude},${location.longitude}`)}&destination=${encodeURIComponent(destination)}&mode=driving`;
 }
 
 function googleMapsLink(location: EscortLocation, destination?: string) {
@@ -76,6 +84,7 @@ export function RealtimeMap({ destination, escortId, initialLocations, trackedEm
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const [routeStatus, setRouteStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const latest = locations.at(-1);
+  const embedUrl = latest ? destination ? googleMapsRouteEmbedUrl(latest, destination) : googleMapsEmbedUrl(latest) : null;
 
   useEffect(() => {
     const supabase = createBrowserSupabaseClient();
@@ -127,15 +136,24 @@ export function RealtimeMap({ destination, escortId, initialLocations, trackedEm
 
   return (
     <div className="relative min-h-[520px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
-      {latest ? (
-        <iframe className="absolute inset-0 h-full w-full border-0" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={destination ? googleMapsRouteEmbedUrl(latest, destination) : googleMapsEmbedUrl(latest)} title="Rota até o local de carregamento no Google Maps" />
+      {embedUrl ? (
+        <iframe className="absolute inset-0 h-full w-full border-0" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={embedUrl} title="Rota até o destino no Google Maps" />
       ) : (
-        <div className="absolute inset-0 map-grid" />
+        <div className="absolute inset-0 map-grid">
+          <div className="grid h-full place-items-center px-6 text-center">
+            <div className="max-w-md rounded-lg border border-[var(--border)] bg-[rgba(13,17,23,0.86)] p-5 shadow-sm backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--muted)]">Google Maps</p>
+              <h2 className="mt-2 font-display text-xl font-bold text-[var(--foreground)]">Abrir rota externa</h2>
+              <p className="mt-2 text-sm text-[var(--muted-strong)]">Para exibir a rota dentro da tela, configure `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_API_KEY`. Enquanto isso, a rota abre diretamente no Google Maps.</p>
+              {latest ? <a className="mt-4 inline-flex min-h-11 items-center justify-center rounded-md border border-[var(--tactical-blue)] bg-[var(--tactical-blue)] px-4 py-2.5 text-sm font-bold uppercase tracking-[0.08em] text-white shadow-[var(--glow-blue)]" href={googleMapsLink(latest, destination)} rel="noreferrer" target="_blank">Abrir rota no Google Maps</a> : null}
+            </div>
+          </div>
+        </div>
       )}
       <div className="absolute bottom-4 left-4 right-4 rounded-md border border-[var(--border)] bg-[rgba(13,17,23,0.9)] p-5 shadow-sm backdrop-blur">
         <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--muted)]">Localização Atual até o carregamento</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--muted)]">Localização atual até o destino</p>
             <strong className="mt-1 block text-[var(--foreground)]">
               {latest ? `${formatCoordinate(latest.latitude)}, ${formatCoordinate(latest.longitude)}` : "Aguardando localização"}
             </strong>

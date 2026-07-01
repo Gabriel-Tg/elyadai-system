@@ -33,6 +33,7 @@ export function EscortForm({ clients, employees }: { clients: Client[]; employee
         <CurrencyInput name="valor_base" />
       </label>
       <MapsSearchField label="Local do carregamento" name="local_carregamento" required />
+      <MapsSearchField label="Local de destino" name="local_destino" required />
       <label className="block md:col-span-2">
         <span className="field-label">Observação operacional</span>
         <textarea className="field-control mt-2 min-h-24" name="observacao_operacional" />

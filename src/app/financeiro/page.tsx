@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowUpFromLine, CreditCard, WalletCards } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, WalletCards } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { StatCard } from "@/components/cards/stat-card";
 import { FinancialModals } from "@/components/finance/financial-modals";
@@ -20,8 +20,6 @@ function date(value: string | null | undefined) {
 export default async function FinancialPage() {
   const profile = await requireProfile(["supervisor"]);
   const data = await getFinancialOverview();
-  const clientTotal = data.clients.reduce((sum, item) => sum + Number(item.valor_total), 0);
-  const employeeTotal = data.employees.reduce((sum, item) => sum + Number(item.pagamento_final), 0);
   const entryReceivables = data.entries.filter((entry) => entry.direction === "receivable");
   const entryPayables = data.entries.filter((entry) => entry.direction === "payable");
   const paidClientTotal = data.clients.filter((item) => item.status_pagamento === "pago").reduce((sum, item) => sum + Number(item.valor_total), 0);
@@ -30,6 +28,7 @@ export default async function FinancialPage() {
   const paidEntryPayables = entryPayables.filter((entry) => entry.status_pagamento === "pago").reduce((sum, entry) => sum + Number(entry.amount), 0);
   const cashIn = paidClientTotal + paidEntryReceivables;
   const cashOut = paidEmployeeTotal + paidEntryPayables;
+  const currentBalance = cashIn - cashOut;
   const pendingPayableOptions = [
     ...data.employees.filter((item) => item.status_pagamento === "pendente").map((item) => ({ label: `${item.employees?.nome ?? item.employee_id} - ${money(item.pagamento_final)}`, value: `employee:${item.id}` })),
     ...entryPayables.filter((entry) => entry.status_pagamento === "pendente").map((entry) => ({ label: `${entry.description} - ${money(entry.amount)}`, value: `entry:${entry.id}` })),
@@ -52,16 +51,11 @@ export default async function FinancialPage() {
     <AppShell profile={profile}>
       <h1 className="mb-6 font-display text-3xl font-bold">Financeiro</h1>
       <FinancialModals escortOptions={escortOptions} payableOptions={pendingPayableOptions} receivableOptions={pendingReceivableOptions} />
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard detail="Faturamento bruto de clientes" icon={CreditCard} label="Clientes" tone="green" value={money(clientTotal)} />
-        <StatCard detail="Pagamentos finais de funcionários" icon={WalletCards} label="Funcionários" tone="yellow" value={money(employeeTotal)} />
+      <section className="grid gap-4 md:grid-cols-3">
         <StatCard detail="Recebimentos quitados" icon={ArrowDownToLine} label="Entradas" tone="green" value={money(cashIn)} />
         <StatCard detail="Pagamentos quitados" icon={ArrowUpFromLine} label="Saídas" tone="red" value={money(cashOut)} />
+        <StatCard detail="Entradas menos saídas quitadas" icon={WalletCards} label="Saldo atual" tone={currentBalance >= 0 ? "green" : "red"} value={money(currentBalance)} />
       </section>
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <RecordTable columns={["Cliente", "Escolta", "Total", "Status"]} rows={data.clients.map((item) => ({ cells: [item.escorts?.clients?.nome ?? item.escort_id, item.escort_id, money(item.valor_total), item.status_pagamento] }))} />
-        <RecordTable columns={["Funcionário", "Escolta", "Final", "Status"]} rows={data.employees.map((item) => ({ cells: [item.employees?.nome ?? item.employee_id, item.escort_id, money(item.pagamento_final), item.status_pagamento] }))} />
-      </div>
       <section className="mt-6 grid gap-6 xl:grid-cols-2">
         <div>
           <h2 className="mb-4 font-display text-2xl font-bold">Contas a pagar</h2>

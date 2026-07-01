@@ -91,6 +91,7 @@ create table if not exists public.escorts (
   data_escolta date not null,
   hora_carregamento time not null,
   local_carregamento text not null,
+  local_destino text not null,
   observacao_operacional text,
   encontro_alternativo_permitido boolean not null default false,
   local_alternativo_encontro text,
@@ -102,8 +103,16 @@ create table if not exists public.escorts (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint escorts_valid_real_times check (fim_real is null or inicio_real is null or fim_real >= inicio_real),
+  constraint escorts_destination_required check (nullif(trim(local_destino), '') is not null),
   constraint escorts_alternative_required check (encontro_alternativo_permitido = false or nullif(trim(local_alternativo_encontro), '') is not null)
 );
+
+alter table public.escorts add column if not exists local_destino text not null default 'Destino não informado';
+
+do $$ begin
+  alter table public.escorts add constraint escorts_destination_required check (nullif(trim(local_destino), '') is not null);
+exception when duplicate_object then null;
+end $$;
 
 create table if not exists public.escort_team (
   id uuid primary key default gen_random_uuid(),
@@ -322,6 +331,7 @@ begin
     or old.data_escolta is distinct from new.data_escolta
     or old.hora_carregamento is distinct from new.hora_carregamento
     or old.local_carregamento is distinct from new.local_carregamento
+    or old.local_destino is distinct from new.local_destino
     or old.observacao_operacional is distinct from new.observacao_operacional
     or old.encontro_alternativo_permitido is distinct from new.encontro_alternativo_permitido
     or old.local_alternativo_encontro is distinct from new.local_alternativo_encontro
@@ -481,11 +491,14 @@ $$;
 drop trigger if exists escorts_update_financial_excess on public.escorts;
 create trigger escorts_update_financial_excess after update of inicio_real, fim_real on public.escorts for each row execute function public.update_financial_client_excess();
 
+drop function if exists public.create_escort_with_team(uuid, date, time, text, text, boolean, text, uuid, uuid, numeric);
+
 create or replace function public.create_escort_with_team(
   p_client_id uuid,
   p_data_escolta date,
   p_hora_carregamento time,
   p_local_carregamento text,
+  p_local_destino text,
   p_observacao_operacional text,
   p_encontro_alternativo_permitido boolean,
   p_local_alternativo_encontro text,
@@ -500,6 +513,7 @@ declare
 begin
   if not public.is_supervisor() then raise exception 'Somente supervisores podem criar escoltas'; end if;
   if p_employee_1 is null then raise exception 'Informe o funcionário responsável pela escolta'; end if;
+  if nullif(trim(coalesce(p_local_destino, '')), '') is null then raise exception 'Informe o local de destino'; end if;
   if p_employee_2 is not null and p_employee_2 = p_employee_1 then raise exception 'Funcionário 2 deve ser diferente do funcionário 1'; end if;
   if p_encontro_alternativo_permitido and nullif(trim(coalesce(p_local_alternativo_encontro, '')), '') is null then raise exception 'Informe o local alternativo de encontro'; end if;
   v_start := (p_data_escolta + p_hora_carregamento)::timestamptz;
@@ -512,8 +526,8 @@ begin
       and v_start < escort.scheduled_end
       and v_end > (escort.data_escolta + escort.hora_carregamento)::timestamptz
   ) then raise exception 'Funcionário já está em outra escolta no mesmo horário'; end if;
-  insert into public.escorts (client_id, data_escolta, hora_carregamento, local_carregamento, observacao_operacional, encontro_alternativo_permitido, local_alternativo_encontro, scheduled_end, created_by)
-  values (p_client_id, p_data_escolta, p_hora_carregamento, p_local_carregamento, p_observacao_operacional, p_encontro_alternativo_permitido, p_local_alternativo_encontro, v_end, public.current_profile_id()) returning id into v_escort_id;
+  insert into public.escorts (client_id, data_escolta, hora_carregamento, local_carregamento, local_destino, observacao_operacional, encontro_alternativo_permitido, local_alternativo_encontro, scheduled_end, created_by)
+  values (p_client_id, p_data_escolta, p_hora_carregamento, p_local_carregamento, p_local_destino, p_observacao_operacional, p_encontro_alternativo_permitido, p_local_alternativo_encontro, v_end, public.current_profile_id()) returning id into v_escort_id;
   insert into public.escort_team (escort_id, employee_id, position) values (v_escort_id, p_employee_1, 1);
   if p_employee_2 is not null then insert into public.escort_team (escort_id, employee_id, position) values (v_escort_id, p_employee_2, 2); end if;
   insert into public.financial_clients (escort_id, valor_base) values (v_escort_id, p_valor_base);

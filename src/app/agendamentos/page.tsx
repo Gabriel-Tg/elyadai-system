@@ -79,7 +79,7 @@ export default async function EscortsPage({ searchParams }: EscortsPageProps) {
         <FilterChip active={status === "Finalizada"} href="/agendamentos?status=Finalizada">Finalizada</FilterChip>
         <FilterChip active={status === "Cancelada"} href="/agendamentos?status=Cancelada">Cancelada</FilterChip>
       </FilterChips>
-      <RecordTable columns={["Cliente", "Data", "Hora", "Status", "Equipe"]} rows={visibleEscorts.map((escort) => ({ href: `/agendamentos/${escort.id}`, cells: [escort.clients?.nome ?? escort.client_id, escort.data_escolta, escort.hora_carregamento, escort.status, escort.escort_team?.map((team) => team.employees?.nome).filter(Boolean).join(" + ") ?? "-"] }))} />
+      <RecordTable columns={["Cliente", "Data", "Hora", "Origem", "Destino", "Status", "Equipe"]} rows={visibleEscorts.map((escort) => ({ href: `/agendamentos/${escort.id}`, cells: [escort.clients?.nome ?? escort.client_id, escort.data_escolta, escort.hora_carregamento, escort.local_carregamento, escort.local_destino, escort.status, escort.escort_team?.map((team) => team.employees?.nome).filter(Boolean).join(" + ") ?? "-"] }))} />
     </AppShell>
   );
 }

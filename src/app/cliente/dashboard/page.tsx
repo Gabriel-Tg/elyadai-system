@@ -42,7 +42,7 @@ export default async function ClientDashboardPage() {
         <StatCard detail="Total faturado no portal" icon={CreditCard} label="Pagamentos" tone="yellow" value={money(total)} />
       </section>
       <div className="mt-6">
-        <RecordTable columns={["Data", "Status", "Local", "Pagamento"]} rows={escorts.map((escort) => ({ href: `/agendamentos/${escort.id}`, cells: [escort.data_escolta, escort.status, escort.local_carregamento, escort.financial_clients?.[0]?.status_pagamento ?? "-"] }))} />
+        <RecordTable columns={["Data", "Status", "Origem", "Destino", "Pagamento"]} rows={escorts.map((escort) => ({ href: `/agendamentos/${escort.id}`, cells: [escort.data_escolta, escort.status, escort.local_carregamento, escort.local_destino, escort.financial_clients?.[0]?.status_pagamento ?? "-"] }))} />
       </div>
       <Panel className="mt-6 p-5">
         <h2 className="font-display text-xl font-bold">Pendências</h2>

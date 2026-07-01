@@ -46,6 +46,7 @@ export type Escort = {
   data_escolta: string;
   hora_carregamento: string;
   local_carregamento: string;
+  local_destino: string;
   observacao_operacional: string | null;
   encontro_alternativo_permitido: boolean;
   local_alternativo_encontro: string | null;
@@ -103,7 +104,7 @@ export type FinancialClient = {
   paid_at: string | null;
   created_at: string;
   updated_at: string;
-  escorts?: Pick<Escort, "id" | "data_escolta" | "local_carregamento"> & { clients?: Pick<Client, "nome"> | null } | null;
+  escorts?: Pick<Escort, "id" | "data_escolta" | "local_carregamento" | "local_destino"> & { clients?: Pick<Client, "nome"> | null } | null;
 };
 
 export type FinancialEmployee = {
@@ -146,10 +147,10 @@ export type FinancialEntry = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  escorts?: Pick<Escort, "id" | "data_escolta" | "local_carregamento"> & { clients?: Pick<Client, "nome"> | null } | null;
+  escorts?: Pick<Escort, "id" | "data_escolta" | "local_carregamento" | "local_destino"> & { clients?: Pick<Client, "nome"> | null } | null;
 };
 
-export type FinancialEscortOption = Pick<Escort, "id" | "data_escolta" | "local_carregamento"> & {
+export type FinancialEscortOption = Pick<Escort, "id" | "data_escolta" | "local_carregamento" | "local_destino"> & {
   clients?: Pick<Client, "nome"> | null;
 };
 

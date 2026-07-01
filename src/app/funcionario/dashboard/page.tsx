@@ -42,7 +42,7 @@ export default async function EmployeeDashboardPage() {
       {missions.length ? (
         <section className="mt-6">
           <h2 className="mb-4 font-display text-2xl font-bold">Agendamentos</h2>
-          <RecordTable columns={["Cliente", "Data", "Hora", "Status", "Local"]} rows={missions.map((mission) => ({ href: `/agendamentos/${mission.id}`, cells: [mission.clients?.nome ?? mission.client_id, mission.data_escolta, mission.hora_carregamento, mission.status, mission.local_carregamento] }))} />
+          <RecordTable columns={["Cliente", "Data", "Hora", "Status", "Origem", "Destino"]} rows={missions.map((mission) => ({ href: `/agendamentos/${mission.id}`, cells: [mission.clients?.nome ?? mission.client_id, mission.data_escolta, mission.hora_carregamento, mission.status, mission.local_carregamento, mission.local_destino] }))} />
         </section>
       ) : (
         <Panel className="mt-6 p-5 text-[var(--muted-strong)]">Nenhuma missão vinculada.</Panel>

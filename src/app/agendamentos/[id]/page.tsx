@@ -14,6 +14,11 @@ function isEmployeeAssigned(employeeId: string, escort: NonNullable<Awaited<Retu
   return Boolean(escort.escort_team?.some((team) => team.employee_id === employeeId));
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
 export default async function EscortDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const profile = await requireProfile(["supervisor", "funcionario", "cliente"]);
   const { id } = await params;
@@ -49,11 +54,19 @@ export default async function EscortDetailsPage({ params }: { params: Promise<{ 
         <StatusBadge value={escort.status} />
       </div>
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <RealtimeMap destination={escort.local_carregamento} escortId={escort.id} initialLocations={details.locations} trackedEmployeeId={primaryTeamMember?.employee_id ?? null} />
+        <RealtimeMap destination={escort.local_destino} escortId={escort.id} initialLocations={details.locations} trackedEmployeeId={primaryTeamMember?.employee_id ?? null} />
         <Panel className="space-y-4 p-5">
           <dl className="grid gap-4 text-sm">
             <div><dt className="font-bold text-[var(--muted)]">Data</dt><dd className="text-[var(--foreground)]">{escort.data_escolta} às {escort.hora_carregamento}</dd></div>
-            <div><dt className="font-bold text-[var(--muted)]">Local</dt><dd className="text-[var(--foreground)]">{escort.local_carregamento}</dd></div>
+            <div><dt className="font-bold text-[var(--muted)]">Local de carregamento</dt><dd className="text-[var(--foreground)]">{escort.local_carregamento}</dd></div>
+            <div><dt className="font-bold text-[var(--muted)]">Local de destino</dt><dd className="text-[var(--foreground)]">{escort.local_destino}</dd></div>
+            {escort.status === "Finalizada" ? (
+              <>
+                <div><dt className="font-bold text-[var(--muted)]">Início da escolta</dt><dd className="text-[var(--foreground)]">{formatDateTime(escort.inicio_real)}</dd></div>
+                <div><dt className="font-bold text-[var(--muted)]">Fim da escolta</dt><dd className="text-[var(--foreground)]">{formatDateTime(escort.fim_real)}</dd></div>
+                <div><dt className="font-bold text-[var(--muted)]">Fotos anexadas</dt><dd className="text-[var(--foreground)]">{details.photos.length}</dd></div>
+              </>
+            ) : null}
             {!isClient ? <div><dt className="font-bold text-[var(--muted)]">Funcionário 1</dt><dd className="text-[var(--foreground)]">{primaryTeamMember?.employees?.nome ?? "Não definido"}</dd></div> : null}
             <div><dt className="font-bold text-[var(--muted)]">Encontro alternativo</dt><dd className="text-[var(--foreground)]">{escort.encontro_alternativo_permitido ? escort.local_alternativo_encontro : "Não permitido"}</dd></div>
           </dl>
