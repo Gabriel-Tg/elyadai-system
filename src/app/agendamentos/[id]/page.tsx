@@ -49,7 +49,7 @@ export default async function EscortDetailsPage({ params }: { params: Promise<{ 
         <StatusBadge value={escort.status} />
       </div>
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <RealtimeMap escortId={escort.id} initialLocations={details.locations} trackedEmployeeId={primaryTeamMember?.employee_id ?? null} />
+        <RealtimeMap destination={escort.local_carregamento} escortId={escort.id} initialLocations={details.locations} trackedEmployeeId={primaryTeamMember?.employee_id ?? null} />
         <Panel className="space-y-4 p-5">
           <dl className="grid gap-4 text-sm">
             <div><dt className="font-bold text-[var(--muted)]">Data</dt><dd className="text-[var(--foreground)]">{escort.data_escolta} às {escort.hora_carregamento}</dd></div>
