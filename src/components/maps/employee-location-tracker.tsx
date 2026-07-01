@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { MapPin, Square } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { AlertTriangle, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { sendCurrentEmployeeLocationAction } from "@/services/escorts";
@@ -15,7 +15,14 @@ export function EmployeeLocationTracker({ escortId }: { escortId: string }) {
   const [lastError, setLastError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  async function sendPosition(position: GeolocationPosition) {
+  const stopTracking = useCallback(function stopTracking() {
+    if (watchId.current !== null) {
+      navigator.geolocation.clearWatch(watchId.current);
+      watchId.current = null;
+    }
+  }, []);
+
+  const sendPosition = useCallback(async function sendPosition(position: GeolocationPosition) {
     const formData = new FormData();
     formData.set("escort_id", escortId);
     formData.set("latitude", String(position.coords.latitude));
@@ -23,13 +30,15 @@ export function EmployeeLocationTracker({ escortId }: { escortId: string }) {
     formData.set("accuracy_meters", String(position.coords.accuracy));
     await sendCurrentEmployeeLocationAction(formData);
     setLastSentAt(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-  }
+  }, [escortId]);
 
-  function startTracking() {
+  const startTracking = useCallback(function startTracking() {
     if (!("geolocation" in navigator)) {
       setStatus("unsupported");
       return;
     }
+
+    stopTracking();
 
     setLastError(null);
     setStatus("tracking");
@@ -50,46 +59,44 @@ export function EmployeeLocationTracker({ escortId }: { escortId: string }) {
       },
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
     );
-  }
+  }, [sendPosition, stopTracking]);
 
-  function stopTracking() {
-    if (watchId.current !== null) {
-      navigator.geolocation.clearWatch(watchId.current);
-      watchId.current = null;
-    }
+  useEffect(() => {
+    const timeout = window.setTimeout(() => startTracking(), 0);
 
-    setStatus("idle");
-  }
-
-  useEffect(() => stopTracking, []);
+    return () => {
+      window.clearTimeout(timeout);
+      stopTracking();
+    };
+  }, [startTracking, stopTracking]);
 
   const helper = {
-    denied: "Permita o acesso à localização no navegador do celular.",
+    denied: "A localização é obrigatória durante a missão. Autorize o GPS para continuar transmitindo.",
     error: lastError ?? "Não foi possível obter a localização do celular.",
-    idle: "Ative o GPS para transmitir a localização em tempo real durante a missão.",
+    idle: "Solicitando autorização do GPS.",
     tracking: lastSentAt ? `Último envio às ${lastSentAt}.` : "Aguardando primeira leitura do GPS.",
     unsupported: "Este navegador não oferece suporte a GPS.",
   }[status];
+  const needsPermissionRetry = status === "denied" || status === "error" || status === "unsupported";
 
   return (
-    <section className="rounded-lg border border-[var(--operational-green)] bg-[rgba(35,134,54,0.1)] p-5 shadow-[var(--glow-green)]">
+    <section className={`rounded-lg border p-5 ${needsPermissionRetry ? "border-[var(--alert-red)] bg-[rgba(218,54,51,0.12)] shadow-[var(--glow-red)]" : "border-[var(--operational-green)] bg-[rgba(35,134,54,0.1)] shadow-[var(--glow-green)]"}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="font-display text-xl font-bold text-[var(--foreground)]">GPS em tempo real</h2>
           <p className="mt-1 text-sm text-[var(--muted-strong)]">{helper}</p>
         </div>
-        <StatusBadge tone={status === "tracking" ? "success" : "neutral"} value={status === "tracking" ? "Ativo" : "Parado"} />
+        <StatusBadge tone={status === "tracking" ? "success" : needsPermissionRetry ? "danger" : "neutral"} value={status === "tracking" ? "Ativo" : needsPermissionRetry ? "GPS obrigatório" : "Solicitando"} />
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <Button className="w-full" disabled={status === "tracking" || isPending} onClick={startTracking} type="button" variant="success">
-          <MapPin size={18} />
-          Ativar GPS
-        </Button>
-        <Button className="w-full" onClick={stopTracking} type="button" variant="secondary">
-          <Square size={18} />
-          Parar
-        </Button>
-      </div>
+      {needsPermissionRetry ? (
+        <div className="mt-4">
+          <Button className="w-full" disabled={isPending} onClick={startTracking} type="button" variant="danger">
+            <AlertTriangle size={18} /> Autorizar GPS novamente
+          </Button>
+        </div>
+      ) : status === "tracking" ? (
+        <p className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#7ee787]"><MapPin size={18} /> Transmissão automática ativa</p>
+      ) : null}
     </section>
   );
 }

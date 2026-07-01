@@ -4,20 +4,21 @@ import { useEffect, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
 import type { EscortLocation } from "@/types/database";
 
-function positionFor(location: EscortLocation, locations: EscortLocation[]) {
-  const latitudes = locations.map((item) => Number(item.latitude));
-  const longitudes = locations.map((item) => Number(item.longitude));
-  const minLat = Math.min(...latitudes);
-  const maxLat = Math.max(...latitudes);
-  const minLng = Math.min(...longitudes);
-  const maxLng = Math.max(...longitudes);
-  const latSpan = maxLat - minLat || 0.001;
-  const lngSpan = maxLng - minLng || 0.001;
+function formatCoordinate(value: number) {
+  return Number(value).toFixed(6);
+}
 
-  return {
-    left: `${12 + ((Number(location.longitude) - minLng) / lngSpan) * 76}%`,
-    top: `${88 - ((Number(location.latitude) - minLat) / latSpan) * 76}%`,
-  };
+function formatRecordedAt(value: string | null | undefined) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "medium" });
+}
+
+function googleMapsEmbedUrl(location: EscortLocation) {
+  return `https://www.google.com/maps?q=${encodeURIComponent(`${location.latitude},${location.longitude}`)}&z=18&output=embed`;
+}
+
+function googleMapsLink(location: EscortLocation) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${location.latitude},${location.longitude}`)}`;
 }
 
 export function RealtimeMap({ escortId, initialLocations, trackedEmployeeId }: { escortId: string; initialLocations: EscortLocation[]; trackedEmployeeId?: string | null }) {
@@ -50,23 +51,22 @@ export function RealtimeMap({ escortId, initialLocations, trackedEmployeeId }: {
 
   return (
     <div className="relative min-h-[320px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
-      <div className="absolute inset-0 map-grid" />
-      <div className="absolute left-[10%] top-[22%] h-2 w-[82%] rotate-[-15deg] rounded-full bg-[rgba(210,153,34,0.72)] shadow-[var(--glow-yellow)]" />
-      {locations.map((location, index) => (
-        <span
-          className="absolute grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-[#7ee787] bg-[var(--operational-green)] text-xs font-bold text-white shadow-[var(--glow-green)]"
-          key={location.id}
-          style={positionFor(location, locations)}
-          title={`${location.latitude}, ${location.longitude}`}
-        >
-          {index + 1}
-        </span>
-      ))}
+      {latest ? (
+        <iframe className="absolute inset-0 h-full w-full border-0" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={googleMapsEmbedUrl(latest)} title="Localização atual no Google Maps" />
+      ) : (
+        <div className="absolute inset-0 map-grid" />
+      )}
       <div className="absolute bottom-4 left-4 right-4 rounded-md border border-[var(--border)] bg-[rgba(13,17,23,0.86)] p-4 shadow-sm backdrop-blur">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--muted)]">Realtime ativo</p>
-        <strong className="mt-1 block text-[var(--foreground)]">
-          {latest ? `${Number(latest.latitude).toFixed(5)}, ${Number(latest.longitude).toFixed(5)}` : "Aguardando localização"}
-        </strong>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--muted)]">Localização Atual</p>
+            <strong className="mt-1 block text-[var(--foreground)]">
+              {latest ? `${formatCoordinate(latest.latitude)}, ${formatCoordinate(latest.longitude)}` : "Aguardando localização"}
+            </strong>
+            {latest ? <p className="mt-2 text-xs font-semibold text-[var(--muted-strong)]">Atualizado em {formatRecordedAt(latest.recorded_at)}{latest.accuracy_meters ? ` - precisão ${Math.round(Number(latest.accuracy_meters))}m` : ""}</p> : null}
+          </div>
+          {latest ? <a className="text-sm font-bold text-[#79c0ff] underline-offset-4 hover:underline" href={googleMapsLink(latest)} rel="noreferrer" target="_blank">Abrir no Google Maps</a> : null}
+        </div>
       </div>
     </div>
   );
